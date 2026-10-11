@@ -2,6 +2,8 @@ import type { ChatItem } from "@/shared/ipc-contract";
 
 interface Props {
   items: ChatItem[];
+  /** 正在拉取历史消息。历史为空时不能直接说"还没有消息"——那是还没拉完。 */
+  loading?: boolean;
 }
 
 function renderItem(item: ChatItem) {
@@ -29,10 +31,14 @@ function renderItem(item: ChatItem) {
   }
 }
 
-export function MessageList({ items }: Props) {
+export function MessageList({ items, loading = false }: Props) {
   return (
     <div className="message-list">
-      {items.length === 0 ? <div className="empty">还没有消息。选一个 agent，然后开始对话。</div> : null}
+      {items.length === 0 ? (
+        <div className="empty">
+          {loading ? "正在加载历史消息…" : "还没有消息。选一个 agent，然后开始对话。"}
+        </div>
+      ) : null}
       {items.map((item) => (
         <div key={item.id}>{renderItem(item)}</div>
       ))}

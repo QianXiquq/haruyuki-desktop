@@ -23,6 +23,20 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("haruyuki:listAgents", () => deps.getBridge().listAgents());
 
+  ipcMain.handle("haruyuki:listConversations", (_event, agentId: unknown) => {
+    if (agentId !== undefined && typeof agentId !== "string") {
+      throw new Error("listConversations 的 agentId 必须是字符串");
+    }
+    return deps.getBridge().listConversations(agentId as string | undefined);
+  });
+
+  ipcMain.handle("haruyuki:loadConversation", (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("loadConversation 需要非空的 conversationId");
+    }
+    return deps.getBridge().loadConversation(conversationId);
+  });
+
   ipcMain.handle(
     "haruyuki:startRuntime",
     (_event, agentId: unknown, mode: unknown, conversationId: unknown) => {

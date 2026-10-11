@@ -5,7 +5,7 @@
  * 必须显式用 `mode: "standard"` 才会出现 control_request。
  */
 import WebSocket from "ws";
-import { AppServerBridge, extractText } from "@/main/app-server";
+import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 

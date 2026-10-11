@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AgentPicker } from "./components/AgentPicker";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
 import type { PermissionMode } from "@/shared/ipc-contract";
 import { useHaruyuki } from "./state/use-haruyuki";
@@ -27,9 +28,16 @@ export function App() {
     approvals,
     busy,
     runtime,
+    conversations,
+    activeConversationId,
+    loadingHistory,
     refreshAgents,
     selectAgent,
+    openConversation,
+    newConversation,
     setPermissionMode,
+    restoreLastConversation,
+    reloadHistory,
     send,
     respond,
     interrupt,
@@ -48,16 +56,39 @@ export function App() {
   }, [refreshAgents, status.state]);
 
   const firstAgentId = agents[0]?.id ?? null;
-  useEffect(() => {
-    if (selectedId === null && firstAgentId !== null && status.state === "connected") {
-      setSelectedId(firstAgentId);
-      void selectAgent(firstAgentId, mode);
-    }
-  }, [firstAgentId, selectedId, status.state, selectAgent, mode]);
 
-  async function onSelect(agentId: string): Promise<void> {
+  /**
+   * 进入界面的引导流程，**只跑一次**。
+   *
+   * 关键点是它必须等 agent 列表出来之后再决定"恢复哪个会话"，而不是一看到
+   * 第一个 agent 就 runtime_start —— 后者每次都会新建一个 `local-conv-N`
+   * （修复前就是这个行为，会话数因此一路增长）。
+   */
+  const bootstrapped = useRef(false);
+  useEffect(() => {
+    if (bootstrapped.current) return;
+    if (status.state !== "connected" || firstAgentId === null) return;
+    bootstrapped.current = true;
+    setSelectedId(firstAgentId);
+    void restoreLastConversation(firstAgentId, mode);
+    // mode 是引导时的初始权限，刻意不进依赖：中途改权限不该重跑引导。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstAgentId, restoreLastConversation, status.state]);
+
+  async function onSelectAgent(agentId: string): Promise<void> {
     setSelectedId(agentId);
+    // 换 agent = 新会话。旧会话仍在左侧列表里，随时可以点回去。
     await selectAgent(agentId, mode);
+  }
+
+  async function onSelectConversation(conversationId: string): Promise<void> {
+    if (!selectedId || conversationId === activeConversationId) return;
+    await openConversation(selectedId, conversationId, mode);
+  }
+
+  async function onCreateConversation(): Promise<void> {
+    if (!selectedId) return;
+    await newConversation(selectedId, mode);
   }
 
   async function onModeChange(next: PermissionMode): Promise<void> {
@@ -105,45 +136,76 @@ export function App() {
         <AgentPicker
           agents={agents}
           selectedId={selectedId}
-          onSelect={(id) => void onSelect(id)}
+          onSelect={(id) => void onSelectAgent(id)}
           disabled={status.state !== "connected"}
         />
       </header>
 
-      <MessageList items={items} />
-
-      <div className="approval-area">
-        {approvals.map((approval) => (
-          <ApprovalCard
-            key={approval.requestId}
-            approval={approval}
-            onDecide={(requestId, decision) => void respond(requestId, decision)}
-          />
-        ))}
-      </div>
-
-      <form className="composer" onSubmit={(event) => void onSubmit(event)}>
-        <textarea
-          value={draft}
-          placeholder={runtime ? "输入消息…（Enter 发送，Shift+Enter 换行）" : "先选择一个 agent"}
-          disabled={!runtime}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void onSubmit(event);
-            }
-          }}
+      <div className="body">
+        <ConversationList
+          conversations={conversations}
+          activeId={activeConversationId}
+          disabled={status.state !== "connected"}
+          onSelect={(id) => void onSelectConversation(id)}
+          onCreate={() => void onCreateConversation()}
         />
-        <div className="composer-actions">
-          <button type="submit" disabled={!runtime || busy || !draft.trim()}>
-            发送
-          </button>
-          <button type="button" className="interrupt" disabled={!busy} onClick={() => void interrupt()}>
-            中断
-          </button>
-        </div>
-      </form>
+
+        <main className="chat">
+          <div className="chat-head">
+            <span className="chat-conversation">
+              {activeConversationId ?? "（未选择会话）"}
+            </span>
+            <button
+              type="button"
+              className="reload-history"
+              disabled={!activeConversationId || status.state !== "connected"}
+              onClick={() => void reloadHistory()}
+            >
+              重新加载历史
+            </button>
+          </div>
+
+          <MessageList items={items} loading={loadingHistory} />
+
+          <div className="approval-area">
+            {approvals.map((approval) => (
+              <ApprovalCard
+                key={approval.requestId}
+                approval={approval}
+                onDecide={(requestId, decision) => void respond(requestId, decision)}
+              />
+            ))}
+          </div>
+
+          <form className="composer" onSubmit={(event) => void onSubmit(event)}>
+            <textarea
+              value={draft}
+              placeholder={runtime ? "输入消息…（Enter 发送，Shift+Enter 换行）" : "先选择一个 agent"}
+              disabled={!runtime}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void onSubmit(event);
+                }
+              }}
+            />
+            <div className="composer-actions">
+              <button type="submit" disabled={!runtime || busy || !draft.trim()}>
+                发送
+              </button>
+              <button
+                type="button"
+                className="interrupt"
+                disabled={!busy}
+                onClick={() => void interrupt()}
+              >
+                中断
+              </button>
+            </div>
+          </form>
+        </main>
+      </div>
     </div>
   );
 }

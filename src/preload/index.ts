@@ -10,6 +10,14 @@ function subscribe<T>(channel: string, handler: (payload: T) => void): () => voi
 const api: HaruyukiApi = {
   getStatus: () => ipcRenderer.invoke("haruyuki:getStatus") as Promise<ServerStatus>,
   listAgents: () => ipcRenderer.invoke("haruyuki:listAgents") as ReturnType<HaruyukiApi["listAgents"]>,
+  listConversations: (agentId) =>
+    ipcRenderer.invoke("haruyuki:listConversations", agentId) as ReturnType<
+      HaruyukiApi["listConversations"]
+    >,
+  loadConversation: (conversationId) =>
+    ipcRenderer.invoke("haruyuki:loadConversation", conversationId) as ReturnType<
+      HaruyukiApi["loadConversation"]
+    >,
   startRuntime: (agentId, mode, conversationId) =>
     ipcRenderer.invoke("haruyuki:startRuntime", agentId, mode, conversationId) as ReturnType<
       HaruyukiApi["startRuntime"]

@@ -1,6 +1,14 @@
 import { AppServerClient } from "haruyuki/app-server-client";
 import type { WsProtocolCommand, WsProtocolMessage } from "haruyuki/app-server-protocol";
-import type { AgentSummary, HaruyukiEvent, PermissionMode, RuntimeScope } from "@/shared/ipc-contract";
+import type {
+  AgentSummary,
+  ChatItem,
+  ConversationHistory,
+  ConversationSummary,
+  HaruyukiEvent,
+  PermissionMode,
+  RuntimeScope,
+} from "@/shared/ipc-contract";
 
 type Frame = Record<string, unknown> & { type?: string };
 
@@ -39,6 +47,298 @@ function parseArgs(value: unknown): unknown {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * `<system-reminder>…</system-reminder>` 是 haruyuki 自动插入的环境/自我描述信息，
+ * **不是用户说的话**。实测每轮 user 消息都被塞好几条，原样渲染会让历史里
+ * 第一屏全是噪音。这里与服务端 `src/cli/helpers/conversation-title.ts` 的
+ * `stripSystemReminders` 保持同样的语义。
+ */
+const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+export function stripSystemReminders(text: string): string {
+  return text.replace(SYSTEM_REMINDER_RE, "").trim();
+}
+
+/** `tool_return` 可能是字符串，也可能是 `[{ type: "text", text }]` 内容数组。 */
+function toolReturnText(value: unknown): string {
+  if (typeof value === "string") return value;
+  return extractText(value);
+}
+
+/** 把工具调用归一成 `{ id, name, input }`；`ToolCall` 里 id 叫 `tool_call_id`。 */
+function toolCallOf(raw: unknown): { id: string; name: string; input: unknown } | null {
+  const record = asRecord(raw);
+  const id = str(record.tool_call_id) || str(record.id);
+  const name = str(record.name);
+  if (!id && !name) return null;
+  return { id: id || `tool-${name}`, name: name || "tool", input: parseArgs(record.arguments) };
+}
+
+/**
+ * 把 `conversation_messages_list` 的原始消息数组翻译成界面用的 ChatItem[]。
+ *
+ * 三个必须在这里处理的坑：
+ *  1. **顺序是倒的** —— 服务端默认且强制 `desc`（传 `asc` 无效，实测），
+ *     不反转就会把最新一条渲染到最上面。
+ *  2. **`tool_return_message` 通过 `tool_call_id` 回填 `approval_request_message.tool_call`**
+ *     —— 历史里的工具调用要显示成"已执行 + 输出"，不能拆成两条。
+ *  3. 用户消息里的 system-reminder 必须剥掉。
+ */
+export function toChatItems(messages: unknown[]): ChatItem[] {
+  return toChatItemsWithDate(messages).map((entry) => entry.item);
+}
+
+/**
+ * 与 `toChatItems` 相同，但额外带出每条消息的时间戳 —— 时间戳是唯一能客观验证
+ * "顺序确实被反转成旧→新"的东西（见 `scripts/conversation-check.ts`）。
+ */
+export function toChatItemsWithDate(messages: unknown[]): { item: ChatItem; date: string }[] {
+  // 先按时间正序（旧 → 新）。服务端给的是 desc，所以反转。
+  const ordered = [...messages].reverse();
+  const items: ChatItem[] = [];
+  const dates: string[] = [];
+  // tool_call_id → 已在 items 里落位的工具卡片下标，用于回填 tool_return。
+  const toolIndexById = new Map<string, number>();
+
+  const push = (item: ChatItem, date: string): void => {
+    items.push(item);
+    dates.push(date);
+  };
+
+  for (const [index, raw] of ordered.entries()) {
+    const message = asRecord(raw);
+    const messageType = str(message.message_type);
+    const messageId = str(message.id) || `hist-${index}`;
+    const date = str(message.date);
+
+    switch (messageType) {
+      case "user_message": {
+        const text = stripSystemReminders(extractText(message.content));
+        // 整条都是 system-reminder 的 user 消息（环境注入）直接丢弃。
+        if (text) push({ id: messageId, kind: "user", text }, date);
+        continue;
+      }
+      case "assistant_message": {
+        const text = extractText(message.content);
+        if (text) push({ id: messageId, kind: "assistant", text }, date);
+        continue;
+      }
+      case "reasoning_message": {
+        const text = str(message.reasoning) || extractText(message.content);
+        if (text) push({ id: messageId, kind: "reasoning", text }, date);
+        continue;
+      }
+      // 需要审批的工具留的是 approval_request_message；已自动放行的留 tool_call_message。
+      // 两者都携带 ToolCall，历史里都是"这个工具被调用过"。
+      case "approval_request_message":
+      case "tool_call_message": {
+        const candidates = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+          ? message.tool_calls
+          : [message.tool_call];
+        for (const candidate of candidates) {
+          const call = toolCallOf(candidate);
+          if (!call) continue;
+          toolIndexById.set(call.id, items.length);
+          push(
+            {
+              id: `${messageId}:tool:${call.id}`,
+              kind: "tool_call",
+              name: call.name,
+              input: call.input,
+              done: false,
+            },
+            date,
+          );
+        }
+        continue;
+      }
+      case "tool_return_message": {
+        const toolCallId = str(message.tool_call_id);
+        const output = toolReturnText(message.tool_return) || extractText(message.content);
+        const target = toolIndexById.get(toolCallId);
+        const existing = target === undefined ? undefined : items[target];
+        if (target !== undefined && existing && existing.kind === "tool_call") {
+          items[target] = { ...existing, done: true, output };
+        } else {
+          // 找不到配对的调用（例如历史上被截断的一页）：单独显示结果，别静默吞掉。
+          push(
+            { id: messageId, kind: "notice", text: `工具结果（未找到对应的调用记录）：${output}` },
+            date,
+          );
+        }
+        continue;
+      }
+      default:
+        // system_message / summary_message / event_message 等对用户无意义，跳过。
+        continue;
+    }
+  }
+
+  return items.map((item, index) => ({ item, date: dates[index] ?? "" }));
+}
+
+/** `conversation_list_response` 的一项 → 界面用的摘要。 */
+function toConversationSummary(raw: unknown): ConversationSummary {
+  const conversation = asRecord(raw);
+  const createdAt = str(conversation.created_at);
+  const updatedAt = str(conversation.updated_at);
+  const lastMessageAt = str(conversation.last_message_at);
+  return {
+    id: str(conversation.id),
+    agentId: str(conversation.agent_id),
+    messageCount: Array.isArray(conversation.in_context_message_ids)
+      ? conversation.in_context_message_ids.length
+      : 0,
+    ...(createdAt ? { createdAt } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+    ...(lastMessageAt ? { lastMessageAt } : {}),
+  };
+}
+
+const TITLE_MAX_LENGTH = 48;
+
+/** 折叠空白并截断，做成一行列表标题。 */
+function condense(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > TITLE_MAX_LENGTH ? `${flat.slice(0, TITLE_MAX_LENGTH)}…` : flat;
+}
+
+/**
+ * 从一个会话的消息里挑出最早的**真实**用户发言当标题。
+ *
+ * 只剥掉 system-reminder 还不够：haruyuki 还会插入 cron 提示、
+ * "automated message providing context from prior conversations" 之类的
+ * 自动消息，它们同样是 user 角色。这些一律不要当标题 —— 截断后的噪音标题
+ * 比没有标题更糟。
+ */
+const AUTOMATED_USER_TEXT = [
+  "This is an automated message",
+  "This is an automated reminder",
+  "<cron-prompt>",
+  "<cron-reminder>",
+];
+
+export function deriveConversationTitle(messages: unknown[]): string | undefined {
+  // 服务端给的是 desc（最新在前），所以从尾部往前找最早的用户发言。
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = asRecord(messages[index]);
+    if (str(message.message_type) !== "user_message") continue;
+    const text = stripSystemReminders(extractText(message.content));
+    if (!text) continue;
+    if (AUTOMATED_USER_TEXT.some((prefix) => text.startsWith(prefix))) continue;
+    const title = condense(text);
+    if (title) return title;
+  }
+  return undefined;
+}
+
+/**
+ * 会话相关请求所需的最小客户端面。
+ *
+ * 单独定义是为了让下面这几个纯函数能脱离服务端测试（传一个回调式假客户端即可），
+ * 同时也避免在每条裸 request 上重复写 `as unknown as`。
+ */
+export interface ConversationRequestClient {
+  request(type: string, body?: Record<string, unknown>): Promise<unknown>;
+}
+
+/** 只拉会话列表，不打标题（标题要额外每会话一次请求）。 */
+export async function fetchConversationSummaries(
+  client: ConversationRequestClient,
+  agentId?: string,
+): Promise<ConversationSummary[]> {
+  const response = (await client.request("conversation_list", {
+    ...(agentId ? { query: { agent_id: agentId } } : {}),
+  })) as { success?: boolean; conversations?: unknown[]; error?: string };
+  if (response.success === false) {
+    throw new Error(`conversation_list 失败：${response.error ?? "未知原因"}`);
+  }
+  return (response.conversations ?? []).map(toConversationSummary);
+}
+
+/** 最多给这么多个会话打标题（每个标题要多一次请求，不能无上限地扇出）。 */
+const TITLE_FETCH_LIMIT = 30;
+
+/** 最近活动时间，用于把会话排成"最近用过"的顺序。 */
+function recencyOf(conversation: ConversationSummary): number {
+  const raw =
+    conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt ?? "";
+  return Date.parse(raw) || 0;
+}
+
+/**
+ * 给每个会话补一个标题，并**按最近活动倒序**返回。
+ *
+ * 服务端**没有任何"取标题"的接口**，只能对每个会话取一次最近一页消息再从里面找
+ * 最早的用户发言。所以这里只给最近用过的 `TITLE_FETCH_LIMIT` 个会话打标题
+ * （并发发出；客户端 request 支持并发 + 30s 超时），更老的会话标题留空 ——
+ * 列表能用远比标题齐全重要。单个会话失败只让那个会话没标题。
+ */
+export async function attachConversationTitles(
+  client: ConversationRequestClient,
+  conversations: ConversationSummary[],
+): Promise<ConversationSummary[]> {
+  const sorted = [...conversations].sort((a, b) => recencyOf(b) - recencyOf(a));
+  const titled = await Promise.all(
+    sorted.map(async (conversation, index) => {
+      if (conversation.messageCount === 0) return conversation;
+      if (index >= TITLE_FETCH_LIMIT) return conversation;
+      try {
+        const page = (await client.request("conversation_messages_list", {
+          conversation_id: conversation.id,
+        })) as { messages?: unknown[] };
+        const title = deriveConversationTitle(page.messages ?? []);
+        return title ? { ...conversation, title } : conversation;
+      } catch {
+        return conversation;
+      }
+    }),
+  );
+  return titled;
+}
+
+/**
+ * 取一个会话的原始消息帧（未翻译）。
+ *
+ * 界面上不用，但自测需要拿到时间戳等原始字段来客观验证排序 —— 见
+ * `scripts/conversation-check.ts`。
+ */
+export async function fetchConversationMessages(
+  client: ConversationRequestClient,
+  conversationId: string,
+): Promise<unknown[]> {
+  const response = (await client.request("conversation_messages_list", {
+    conversation_id: conversationId,
+  })) as { success?: boolean; messages?: unknown[]; error?: string };
+  if (response.success === false) {
+    throw new Error(`conversation_messages_list 失败：${response.error ?? "未知原因"}`);
+  }
+  return response.messages ?? [];
+}
+
+/**
+ * 把一个会话的历史消息翻译成界面条目。
+ *
+ * 恢复会话必须单独取历史：实测 `runtime_start { conversation_id }` **不会**
+ * 重放历史消息（只重放 loop/queue 状态）。
+ */
+export async function fetchConversationHistory(
+  client: ConversationRequestClient,
+  conversationId: string,
+): Promise<ConversationHistory> {
+  if (!conversationId) throw new Error("loadConversation 需要 conversationId");
+  const response = (await client.request("conversation_messages_list", {
+    conversation_id: conversationId,
+  })) as { success?: boolean; messages?: unknown[]; has_more?: boolean; error?: string };
+  if (response.success === false) {
+    throw new Error(`conversation_messages_list 失败：${response.error ?? "未知原因"}`);
+  }
+  return {
+    items: toChatItems(response.messages ?? []),
+    hasMore: response.has_more === true,
+  };
 }
 
 /** 把服务端的原始帧收敛成 GUI 关心的少量事件。 */
@@ -116,6 +416,39 @@ export class AppServerBridge {
     }
     this.runtime = frame.runtime;
     return frame.runtime;
+  }
+
+  /**
+   * 列出会话（和 `agent_list` 一样没有客户端 helper，走裸 request）。
+   *
+   * 返回时已按最近活动倒序，并带上推导出来的标题。
+   */
+  async listConversations(agentId?: string): Promise<ConversationSummary[]> {
+    const client = this.conversationClient();
+    const summaries = await fetchConversationSummaries(client, agentId);
+    return attachConversationTitles(client, summaries);
+  }
+
+  /** 见 `fetchConversationHistory` 的说明。 */
+  async loadConversation(conversationId: string): Promise<ConversationHistory> {
+    return fetchConversationHistory(this.conversationClient(), conversationId);
+  }
+
+  /** 原始消息帧，仅供自测验证排序用。 */
+  async rawConversationMessages(conversationId: string): Promise<unknown[]> {
+    return fetchConversationMessages(this.conversationClient(), conversationId);
+  }
+
+  /**
+   * 把带重载的 `AppServerClient.request` 收敛成 `ConversationRequestClient`。
+   *
+   * 只有这一处需要断言 —— 每个调用点各写一次 `as unknown as` 更难维护。
+   */
+  private conversationClient(): ConversationRequestClient {
+    const client = this.current;
+    return {
+      request: (type, body) => client.request(type as never, body) as unknown as Promise<unknown>,
+    };
   }
 
   sendMessage(text: string): void {

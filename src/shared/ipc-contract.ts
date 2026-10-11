@@ -23,6 +23,39 @@ export interface RuntimeScope {
   conversation_id: string;
 }
 
+/**
+ * `conversation_list_response` 里的一项（实测字段）。
+ *
+ * ⚠️ 服务端**不提供标题**，`summary` 实测恒为 `null`。列表标题由渲染进程
+ * 从首条真实用户消息里推导（见 `ConversationList`）。
+ */
+export interface ConversationSummary {
+  id: string;
+  agentId: string;
+  /**
+   * 列表标题。**服务端不提供**（`summary` 实测恒为 null），由主进程从该会话最早的
+   * 一条真实用户消息推导；推不出来（空会话 / 拉取失败）时为 undefined。
+   */
+  title?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastMessageAt?: string;
+  /** 在上下文里的消息条数。为 0 表示这是一个从未说过话的空会话。 */
+  messageCount: number;
+}
+
+/**
+ * `conversation_messages_list` 的返回。
+ *
+ * ⚠️ 服务端**默认 `order="desc"`（最新在前）**，而且实测**不认 `order: "asc"`**
+ * —— 传 asc 仍然是 desc。所以主进程必须先反转再渲染，否则历史是倒着的。
+ */
+export interface ConversationHistory {
+  items: ChatItem[];
+  /** 更老的消息还存在（用 `next_before` 继续翻页；当前 GUI 尚未接翻页）。 */
+  hasMore: boolean;
+}
+
 export type ChatItem =
   | { id: string; kind: "user"; text: string }
   | { id: string; kind: "assistant"; text: string }
@@ -48,6 +81,8 @@ export type HaruyukiEvent =
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
   listAgents(): Promise<AgentSummary[]>;
+  listConversations(agentId?: string): Promise<ConversationSummary[]>;
+  loadConversation(conversationId: string): Promise<ConversationHistory>;
   startRuntime(
     agentId: string,
     mode?: PermissionMode,
