@@ -97,6 +97,16 @@ export function useHaruyuki() {
     };
   }, []);
 
+  /** 统一把失败暴露到界面上，绝不静默吞掉。 */
+  const guard = useCallback(async (label: string, fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setItems((prev) => [...prev, { id: uid(), kind: "notice", text: `${label}失败：${message}` }]);
+    }
+  }, []);
+
   const refreshAgents = useCallback(async () => {
     try {
       setAgents(await window.haruyuki.listAgents());
@@ -108,23 +118,43 @@ export function useHaruyuki() {
     }
   }, []);
 
-  const selectAgent = useCallback(async (agentId: string) => {
-    const scope = await window.haruyuki.startRuntime(agentId);
-    setRuntime(scope);
-    setItems([]);
-  }, []);
+  const selectAgent = useCallback(
+    async (agentId: string) => {
+      await guard("连接 agent", async () => {
+        const scope = await window.haruyuki.startRuntime(agentId);
+        setRuntime(scope);
+        setItems([]);
+      });
+    },
+    [guard],
+  );
 
-  const send = useCallback(async (text: string) => {
-    await window.haruyuki.sendMessage(text);
-  }, []);
+  const send = useCallback(
+    async (text: string) => {
+      await guard("发送消息", async () => {
+        await window.haruyuki.sendMessage(text);
+      });
+    },
+    [guard],
+  );
 
-  const respond = useCallback(async (requestId: string, decision: "allow" | "deny") => {
-    await window.haruyuki.respondApproval(requestId, decision);
-  }, []);
+  const respond = useCallback(
+    async (requestId: string, decision: "allow" | "deny") => {
+      await guard("提交审批", async () => {
+        await window.haruyuki.respondApproval(requestId, decision);
+      });
+    },
+    [guard],
+  );
 
-  const interrupt = useCallback(async () => {
-    await window.haruyuki.interrupt();
-  }, []);
+  const interrupt = useCallback(
+    async () => {
+      await guard("中断", async () => {
+        await window.haruyuki.interrupt();
+      });
+    },
+    [guard],
+  );
 
   return {
     status,
