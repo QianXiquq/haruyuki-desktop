@@ -1,0 +1,166 @@
+import type { Message } from "@letta-ai/letta-client/resources/agents/messages";
+import type { getClient } from "./api/client";
+import type { ForkConversationOptions, forkConversation as forkConversationRequest } from "./api/conversations";
+import { type BackendMode } from "./backend-mode";
+export type { BackendMode };
+export type APIClient = Awaited<ReturnType<typeof getClient>>;
+export type ConversationMessageCreateParams = Parameters<APIClient["conversations"]["messages"]["create"]>;
+export type ConversationMessageCreateBody = ConversationMessageCreateParams[1];
+export type ConversationMessageCreateOptions = ConversationMessageCreateParams[2];
+export type ConversationMessageStreamParams = Parameters<APIClient["conversations"]["messages"]["stream"]>;
+export type ConversationMessageStreamBody = ConversationMessageStreamParams[1];
+export type ConversationMessageStreamOptions = ConversationMessageStreamParams[2];
+export type RunMessageStreamParams = Parameters<APIClient["runs"]["messages"]["stream"]>;
+export type RunMessageStreamBody = RunMessageStreamParams[1];
+export type RunMessageStreamOptions = RunMessageStreamParams[2];
+export type RunRetrieveParams = Parameters<APIClient["runs"]["retrieve"]>;
+export type RunRetrieveOptions = RunRetrieveParams[1];
+export type AgentRetrieveParams = Parameters<APIClient["agents"]["retrieve"]>;
+export type AgentRetrieveOptions = AgentRetrieveParams[1];
+export type AgentListParams = Parameters<APIClient["agents"]["list"]>;
+export type AgentListBody = AgentListParams[0];
+export type AgentDeleteParams = Parameters<APIClient["agents"]["delete"]>;
+export type AgentDeleteOptions = AgentDeleteParams[1];
+export type AgentUpdateParams = Parameters<APIClient["agents"]["update"]>;
+export type AgentUpdateBody = AgentUpdateParams[1];
+export type AgentUpdateOptions = AgentUpdateParams[2];
+export type AgentCreateParams = Parameters<APIClient["agents"]["create"]>;
+export type AgentCreateBody = AgentCreateParams[0];
+export type AgentCreateOptions = AgentCreateParams[1];
+export type ConversationRetrieveParams = Parameters<APIClient["conversations"]["retrieve"]>;
+export type ConversationRetrieveOptions = ConversationRetrieveParams[1];
+export type ConversationListParams = Parameters<APIClient["conversations"]["list"]>;
+export type ConversationListBody = ConversationListParams[0];
+export type ConversationCreateParams = Parameters<APIClient["conversations"]["create"]>;
+export type ConversationCreateBody = ConversationCreateParams[0];
+export type ConversationCreateOptions = ConversationCreateParams[1];
+export type ConversationUpdateParams = Parameters<APIClient["conversations"]["update"]>;
+export type ConversationUpdateBody = ConversationUpdateParams[1];
+export type ConversationUpdateOptions = ConversationUpdateParams[2];
+export type ConversationRecompileParams = Parameters<APIClient["conversations"]["recompile"]>;
+export type ConversationRecompileBody = ConversationRecompileParams[1];
+export type ConversationRecompileOptions = ConversationRecompileParams[2];
+export type ConversationMessageListParams = Parameters<APIClient["conversations"]["messages"]["list"]>;
+export type ConversationMessageListBody = ConversationMessageListParams[1];
+export type ConversationMessageListOptions = ConversationMessageListParams[2];
+export declare const DEFAULT_CONVERSATION_MESSAGE_ORDER = "desc";
+export type ConversationMessageCompactParams = Parameters<APIClient["conversations"]["messages"]["compact"]>;
+export type ConversationMessageCompactBody = ConversationMessageCompactParams[1];
+export type ConversationMessageCompactOptions = ConversationMessageCompactParams[2];
+export type AgentMessageListParams = Parameters<APIClient["agents"]["messages"]["list"]>;
+export type AgentMessageListBody = AgentMessageListParams[1];
+export type AgentMessageListOptions = AgentMessageListParams[2];
+export type MessageRetrieveParams = Parameters<APIClient["messages"]["retrieve"]>;
+export type MessageRetrieveOptions = MessageRetrieveParams[1];
+export type ModelsListParams = Parameters<APIClient["models"]["list"]>;
+export type ModelsListOptions = ModelsListParams[0];
+export interface ConversationResumeTailOptions {
+    limit: number;
+    includeReturnMessageTypes?: string[];
+}
+export interface ConversationResumeTail {
+    conversation?: Awaited<ReturnType<APIClient["conversations"]["retrieve"]>>;
+    messages: Message[];
+}
+/**
+ * What the active backend can do.
+ *
+ * `remoteMemfs` used to say "memory is served by a remote host". The only
+ * backend that answered true was the deleted API backend, so the flag is gone
+ * rather than left as a constant `false`.
+ */
+export interface BackendCapabilities {
+    promptRecompile: boolean;
+    localModelCatalog: boolean;
+    localMemfs: boolean;
+}
+export interface Backend {
+    readonly capabilities: BackendCapabilities;
+    retrieveAgent(agentId: string, options?: AgentRetrieveOptions): Promise<Awaited<ReturnType<APIClient["agents"]["retrieve"]>>>;
+    listAgents(body?: AgentListBody): Promise<Awaited<ReturnType<APIClient["agents"]["list"]>>>;
+    deleteAgent(agentId: string, options?: AgentDeleteOptions): Promise<Awaited<ReturnType<APIClient["agents"]["delete"]>>>;
+    updateAgent(agentId: string, body: AgentUpdateBody, options?: AgentUpdateOptions): Promise<Awaited<ReturnType<APIClient["agents"]["update"]>>>;
+    createAgent(body: AgentCreateBody, options?: AgentCreateOptions): Promise<Awaited<ReturnType<APIClient["agents"]["create"]>>>;
+    retrieveConversation(conversationId: string, options?: ConversationRetrieveOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["retrieve"]>>>;
+    listConversations(body?: ConversationListBody): Promise<Awaited<ReturnType<APIClient["conversations"]["list"]>>>;
+    createConversation(body: ConversationCreateBody, options?: ConversationCreateOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["create"]>>>;
+    /**
+     * Optional agent-free conversation creation used by SDK query() runtimes.
+     * Backends that implement this must preserve `agent_id: null` rather than
+     * materializing a hidden worker agent.
+     */
+    createEphemeralConversation?(body: {
+        model: string;
+        system: string;
+        model_settings?: Record<string, unknown>;
+        context_window_limit?: number | null;
+        parent_agent_id?: string | null;
+        name?: string;
+        is_subagent?: boolean;
+    }): Promise<Awaited<ReturnType<APIClient["conversations"]["create"]>>>;
+    /** Optional: not all backends support deleting conversations. */
+    deleteConversation?(conversationId: string): Promise<Awaited<ReturnType<APIClient["conversations"]["delete"]>>>;
+    updateConversation(conversationId: string, body: ConversationUpdateBody, options?: ConversationUpdateOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["update"]>>>;
+    recompileConversation(conversationId: string, body?: ConversationRecompileBody, options?: ConversationRecompileOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["recompile"]>>>;
+    listConversationMessages(conversationId: string, body?: ConversationMessageListBody, options?: ConversationMessageListOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["messages"]["list"]>>>;
+    compactConversationMessages(conversationId: string, body?: ConversationMessageCompactBody, options?: ConversationMessageCompactOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["messages"]["compact"]>>>;
+    listAgentMessages(agentId: string, body?: AgentMessageListBody, options?: AgentMessageListOptions): Promise<Awaited<ReturnType<APIClient["agents"]["messages"]["list"]>>>;
+    retrieveMessage(messageId: string, options?: MessageRetrieveOptions): Promise<Awaited<ReturnType<APIClient["messages"]["retrieve"]>>>;
+    getConversationResumeTail(agentId: string, conversationId: string, options: ConversationResumeTailOptions): Promise<ConversationResumeTail>;
+    listModels(options?: ModelsListOptions): Promise<Awaited<ReturnType<APIClient["models"]["list"]>>>;
+    createConversationMessageStream(conversationId: string, body: ConversationMessageCreateBody, options?: ConversationMessageCreateOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["messages"]["create"]>>>;
+    streamConversationMessages(conversationId: string, body: ConversationMessageStreamBody, options?: ConversationMessageStreamOptions): Promise<Awaited<ReturnType<APIClient["conversations"]["messages"]["stream"]>>>;
+    cancelConversation(conversationIdOrAgentId: string): Promise<Awaited<ReturnType<APIClient["conversations"]["cancel"]>>>;
+    cancelRun(agentId: string, runId: string): Promise<Awaited<ReturnType<APIClient["agents"]["messages"]["cancel"]>>>;
+    cancelConversationRun(conversationId: string, runId?: string | null): Promise<Awaited<ReturnType<APIClient["agents"]["messages"]["cancel"]>>>;
+    retrieveRun(runId: string, options?: RunRetrieveOptions): Promise<Awaited<ReturnType<APIClient["runs"]["retrieve"]>>>;
+    streamRunMessages(runId: string, body: RunMessageStreamBody, options?: RunMessageStreamOptions): Promise<Awaited<ReturnType<APIClient["runs"]["messages"]["stream"]>>>;
+    forkConversation(conversationId: string, options?: ForkConversationOptions): ReturnType<typeof forkConversationRequest>;
+    getLocalStorageDir?(): string | undefined;
+}
+export declare function getLocalBackendStorageDir(homeDir?: string): string;
+export declare function getBackend(): Backend;
+/**
+ * The backend if one already exists, otherwise `null`; never creates one.
+ *
+ * A caller that only has to *classify* the environment — the tool-declaration
+ * gate, for instance — must not force the process-level backend into existence
+ * merely to ask whether it is local. The local backend is the only backend, so
+ * an absent instance is still classified as local by the caller.
+ */
+export declare function peekBackend(): Backend | null;
+/**
+ * Get a backend instance for a specific mode without switching the global
+ * backend. There is only one backend, so this is now an alias for creating a
+ * local one; the mode argument is kept for callers that still thread it.
+ */
+export declare function getBackendForMode(_mode: BackendMode): Backend;
+/**
+ * Select which *namespace* this process reads and writes, and point the process
+ * at the matching backend instance.
+ *
+ * Namespace selection is not cosmetic: `HARUYUKI_LOCAL_BACKEND_EXPERIMENTAL` is the
+ * predicate behind `isLocalBackendEnvEnabled()`, which in turn picks
+ *  - the settings bucket (`local:<dir>` vs `api.letta.com`) that namespaces
+ *    pins, per-agent settings and last-session refs, and
+ *  - the agent memory directory (`<storageDir>/memfs/<agentId>/memory` vs
+ *    `~/.haruyuki/agents/<agentId>/memory`).
+ *
+ * A process that runs the local backend but leaves the variable unset would
+ * therefore read and write the legacy Cloud namespace: its local pins and
+ * per-agent settings stay invisible, and its memory files land outside the
+ * local store. This function is the single writer that keeps the predicate in
+ * step with the selected mode, so it must write it — `setConfiguredBackendMode`
+ * stays a pure bookkeeping no-op for callers that only thread a value.
+ *
+ * Passing `"api"` selects the *legacy Cloud* namespace for as long as it is
+ * configured. That is only reachable from legacy-Cloud agent/conversation
+ * resolution; `--backend` itself can no longer produce it (see
+ * `parseBackendModeFlag`).
+ */
+export declare function configureBackendMode(mode: BackendMode): void;
+export declare function configureEphemeralLocalBackend(): void;
+export declare function isLocalBackendEnabled(): boolean;
+export declare function configureDevBackend(name: string): Promise<void>;
+export declare function __testSetBackend(nextBackend: Backend | null): void;
+//# sourceMappingURL=backend.d.ts.map

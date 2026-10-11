@@ -1,0 +1,1 @@
+{"version":3,"file":"listener-queue-adapter.d.ts","sourceRoot":"","sources":["../../../../src/websocket/helpers/listener-queue-adapter.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,uBAAuB,CAAC;AAChE,OAAO,KAAK,EAAE,qBAAqB,EAAE,MAAM,qCAAqC,CAAC;AAEjF,wBAAgB,wBAAwB,CACtC,SAAS,EAAE,qBAAqB,EAChC,mBAAmB,EAAE,MAAM,GAC1B,kBAAkB,GAAG,IAAI,CAgB3B"}

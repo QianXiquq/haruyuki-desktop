@@ -1,0 +1,1 @@
+{"version":3,"file":"openai-endpoint.d.ts","sourceRoot":"","sources":["../../../src/utils/openai-endpoint.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,kCAAkC,4BAA4B,CAAC;AAE5E,wBAAgB,wBAAwB,CACtC,QAAQ,EAAE,MAAM,GAAG,IAAI,GAAG,SAAS,GAClC,OAAO,CAUT;AAED,wBAAgB,+BAA+B,CAC7C,QAAQ,EAAE,MAAM,GAAG,IAAI,GAAG,SAAS,GAClC,OAAO,CAQT"}

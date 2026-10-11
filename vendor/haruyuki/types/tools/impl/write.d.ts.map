@@ -1,0 +1,1 @@
+{"version":3,"file":"write.d.ts","sourceRoot":"","sources":["../../../../src/tools/impl/write.ts"],"names":[],"mappings":"AAOA,UAAU,SAAS;IACjB,SAAS,EAAE,MAAM,CAAC;IAClB,OAAO,EAAE,MAAM,CAAC;CACjB;AACD,UAAU,WAAW;IACnB,OAAO,EAAE,MAAM,CAAC;CACjB;AAED,wBAAsB,KAAK,CAAC,IAAI,EAAE,SAAS,GAAG,OAAO,CAAC,WAAW,CAAC,CA+BjE"}

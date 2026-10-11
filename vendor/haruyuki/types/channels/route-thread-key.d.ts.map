@@ -1,0 +1,1 @@
+{"version":3,"file":"route-thread-key.d.ts","sourceRoot":"","sources":["../../../src/channels/route-thread-key.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;GAaG;AACH,eAAO,MAAM,uBAAuB,aAAa,CAAC;AAElD,+EAA+E;AAC/E,wBAAgB,4BAA4B,CAAC,QAAQ,CAAC,EAAE,MAAM,GAAG,IAAI,GAAG,MAAM,CAG7E;AAED,6EAA6E;AAC7E,wBAAgB,2BAA2B,CACzC,SAAS,CAAC,EAAE,MAAM,GAAG,IAAI,GACxB,MAAM,GAAG,IAAI,CAIf"}

@@ -1,0 +1,23 @@
+/**
+ * Env override for the local-backend storage dir (defaults to
+ * `~/.haruyuki/lc-local-backend`).
+ */
+export declare const LOCAL_BACKEND_DIR_ENV = "LETTA_LOCAL_BACKEND_DIR";
+/**
+ * Root dir holding all local-backend on-disk state. Pure path resolution (home
+ * dir + one env override).
+ *
+ * Lives in `utils/` (the bottom layer) so it can be shared by both `backend/`
+ * — which owns the local store — and the `permissions/` cross-agent guard, which
+ * sits below `backend/` and cannot import it but still needs to know where
+ * local memory lives to wall off cross-agent access for in-process file tools.
+ */
+export declare function getLocalBackendStorageDir(homeDir?: string, env?: NodeJS.ProcessEnv): string;
+/**
+ * The tree holding every local-backend agent's memory (`<storage>/memfs`) — the
+ * cross-agent boundary the filesystem sandbox walls off, analogous to
+ * `~/.haruyuki/agents` on the API backend. Each agent's memory lives at
+ * `<this>/<agentId>/memory`, so self is carved the same way on both backends.
+ */
+export declare function getLocalBackendCrossAgentTreeRoot(storageDir?: string): string;
+//# sourceMappingURL=local-backend-paths.d.ts.map

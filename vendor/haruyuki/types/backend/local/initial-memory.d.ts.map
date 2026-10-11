@@ -1,0 +1,1 @@
+{"version":3,"file":"initial-memory.d.ts","sourceRoot":"","sources":["../../../../src/backend/local/initial-memory.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,mBAAmB,CAAC;AAEzD,MAAM,WAAW,sBAAsB;IACrC,YAAY,EAAE,MAAM,CAAC;IACrB,OAAO,EAAE,MAAM,CAAC;CACjB;AAoFD,wBAAgB,gCAAgC,CAC9C,IAAI,EAAE,eAAe,GACpB,sBAAsB,EAAE,CA+B1B"}

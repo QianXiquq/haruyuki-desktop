@@ -1,0 +1,1 @@
+{"version":3,"file":"runtime-working-directory.d.ts","sourceRoot":"","sources":["../../../../src/tools/impl/runtime-working-directory.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,sBAAsB,EAAE,MAAM,mBAAmB,CAAC;AAShE,wBAAsB,6BAA6B,CAAC,MAAM,EAAE;IAC1D,gBAAgB,EAAE,MAAM,CAAC;IACzB,cAAc,CAAC,EAAE,sBAAsB,CAAC;CACzC,GAAG,OAAO,CAAC,IAAI,CAAC,CAsBhB"}

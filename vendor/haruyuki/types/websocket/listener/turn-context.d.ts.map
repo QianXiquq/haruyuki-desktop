@@ -1,0 +1,1 @@
+{"version":3,"file":"turn-context.d.ts","sourceRoot":"","sources":["../../../../src/websocket/listener/turn-context.ts"],"names":[],"mappings":"AAMA,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,SAAS,CAAC;AAEnD,wBAAgB,0BAA0B,CAAC,MAAM,EAAE;IACjD,OAAO,EAAE,mBAAmB,CAAC;IAC7B,OAAO,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;IACxB,cAAc,EAAE,MAAM,CAAC;CACxB,GAAG,IAAI,CAyBP"}

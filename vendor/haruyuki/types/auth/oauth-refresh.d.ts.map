@@ -1,0 +1,1 @@
+{"version":3,"file":"oauth-refresh.d.ts","sourceRoot":"","sources":["../../../src/auth/oauth-refresh.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,kBAAkB,EAAE,KAAK,aAAa,EAAE,MAAM,cAAc,CAAC;AAEtE,KAAK,kBAAkB,GAAG,OAAO,kBAAkB,CAAC;AAIpD,wBAAsB,8BAA8B,CAClD,YAAY,EAAE,MAAM,EACpB,QAAQ,EAAE,MAAM,EAChB,UAAU,CAAC,EAAE,MAAM,EACnB,OAAO,GAAE,kBAAuC,GAC/C,OAAO,CAAC,aAAa,CAAC,CAgBxB"}

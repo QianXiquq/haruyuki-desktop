@@ -1,0 +1,1 @@
+{"version":3,"file":"view-image.d.ts","sourceRoot":"","sources":["../../../../src/tools/impl/view-image.ts"],"names":[],"mappings":"AAEA,OAAO,EAAQ,KAAK,iBAAiB,EAAE,MAAM,QAAQ,CAAC;AAGtD,UAAU,aAAa;IACrB,IAAI,EAAE,MAAM,CAAC;CACd;AAkBD,wBAAsB,UAAU,CAC9B,IAAI,EAAE,aAAa,GAClB,OAAO,CAAC;IAAE,OAAO,EAAE,iBAAiB,CAAA;CAAE,CAAC,CAczC"}

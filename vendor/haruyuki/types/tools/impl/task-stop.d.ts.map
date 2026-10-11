@@ -1,0 +1,1 @@
+{"version":3,"file":"task-stop.d.ts","sourceRoot":"","sources":["../../../../src/tools/impl/task-stop.ts"],"names":[],"mappings":"AAOA,UAAU,YAAY;IACpB,OAAO,EAAE,MAAM,CAAC;CACjB;AAED,UAAU,cAAc;IACtB,MAAM,EAAE,OAAO,CAAC;CACjB;AAED,wBAAsB,SAAS,CAAC,IAAI,EAAE,YAAY,GAAG,OAAO,CAAC,cAAc,CAAC,CAsB3E"}

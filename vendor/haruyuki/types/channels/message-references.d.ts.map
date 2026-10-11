@@ -1,0 +1,1 @@
+{"version":3,"file":"message-references.d.ts","sourceRoot":"","sources":["../../../src/channels/message-references.ts"],"names":[],"mappings":"AAAA,oEAAoE;AACpE,MAAM,WAAW,kBAAkB;IACjC,+DAA+D;IAC/D,KAAK,EAAE,MAAM,CAAC;IACd,+DAA+D;IAC/D,GAAG,EAAE,MAAM,CAAC;IACZ,uCAAuC;IACvC,MAAM,EAAE,MAAM,CAAC;IACf,uDAAuD;IACvD,WAAW,EAAE,MAAM,CAAC;CACrB"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"runtime-dependencies.d.ts","sourceRoot":"","sources":["../../../src/mods/runtime-dependencies.ts"],"names":[],"mappings":"AAUA,MAAM,MAAM,+BAA+B,GAAG,CAAC,WAAW,EAAE,MAAM,KAAK,MAAM,CAAC;AA0D9E,wBAAgB,oCAAoC,CAClD,cAAc,EAAE,MAAM,EACtB,gBAAgB,EAAE,MAAM,EACxB,8BAA8B,EAAE,+BAA+B,GAC9D,IAAI,CASN"}

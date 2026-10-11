@@ -1,0 +1,1 @@
+{"version":3,"file":"create-relayed-abort-controller.d.ts","sourceRoot":"","sources":["../../../src/utils/create-relayed-abort-controller.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,sBAAsB;IACrC,UAAU,EAAE,eAAe,CAAC;IAC5B,MAAM,EAAE,WAAW,CAAC;IACpB,OAAO,EAAE,MAAM,IAAI,CAAC;CACrB;AAED;;;;;;;;GAQG;AACH,wBAAgB,4BAA4B,CAC1C,YAAY,CAAC,EAAE,WAAW,GACzB,sBAAsB,CAiCxB"}

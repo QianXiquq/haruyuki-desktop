@@ -1,0 +1,1 @@
+{"version":3,"file":"chatgpt-oauth.d.ts","sourceRoot":"","sources":["../../../src/types/chatgpt-oauth.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,kBAAkB;IACjC,YAAY,EAAE,MAAM,CAAC;IACrB,QAAQ,EAAE,MAAM,CAAC;IACjB,aAAa,CAAC,EAAE,MAAM,CAAC;IACvB,UAAU,EAAE,MAAM,CAAC;IACnB,UAAU,EAAE,MAAM,CAAC;CACpB;AAED,wBAAgB,oBAAoB,CAClC,KAAK,EAAE,OAAO,GACb,KAAK,IAAI,kBAAkB,CAe7B"}

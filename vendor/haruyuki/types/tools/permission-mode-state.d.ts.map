@@ -1,0 +1,1 @@
+{"version":3,"file":"permission-mode-state.d.ts","sourceRoot":"","sources":["../../../src/tools/permission-mode-state.ts"],"names":[],"mappings":"AAAA,OAAO,EAEL,KAAK,cAAc,EACpB,MAAM,oBAAoB,CAAC;AAE5B,0DAA0D;AAC1D,MAAM,MAAM,mBAAmB,GAAG;IAChC,IAAI,EAAE,cAAc,CAAC;CACtB,CAAC;AAEF,wBAAgB,+BAA+B,CAC7C,mBAAmB,CAAC,EAAE,mBAAmB,GACxC,mBAAmB,CAWrB"}

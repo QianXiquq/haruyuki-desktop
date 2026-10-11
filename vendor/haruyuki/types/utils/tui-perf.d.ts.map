@@ -1,0 +1,1 @@
+{"version":3,"file":"tui-perf.d.ts","sourceRoot":"","sources":["../../../src/utils/tui-perf.ts"],"names":[],"mappings":"AAiDA,wBAAgB,aAAa,CAC3B,GAAG,EAAE,MAAM,EACX,MAAM,CAAC,EAAE;IACP,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,EAAE,CAAC,EAAE,MAAM,CAAC;CACb,GACA,IAAI,CA0BN;AAED,wBAAgB,oBAAoB,CAAC,GAAG,EAAE,MAAM,EAAE,KAAK,EAAE,OAAO,GAAG,IAAI,CAUtE"}

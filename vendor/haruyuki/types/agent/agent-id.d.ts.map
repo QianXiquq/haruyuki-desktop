@@ -1,0 +1,1 @@
+{"version":3,"file":"agent-id.d.ts","sourceRoot":"","sources":["../../../src/agent/agent-id.ts"],"names":[],"mappings":"AAAA,MAAM,MAAM,gBAAgB,GAAG,OAAO,GAAG,KAAK,CAAC;AAE/C,wBAAgB,cAAc,CAAC,OAAO,EAAE,MAAM,GAAG,OAAO,CAEvD;AAED,wBAAgB,cAAc,CAAC,OAAO,EAAE,MAAM,GAAG,OAAO,CAEvD;AAED,wBAAgB,8BAA8B,CAC5C,OAAO,EAAE,MAAM,EACf,WAAW,EAAE,gBAAgB,GAC5B,OAAO,CAIT"}
