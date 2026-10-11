@@ -2,6 +2,9 @@
 
 export type ServerState = "starting" | "connected" | "disconnected" | "error";
 
+/** 与服务端 DevicePermissionMode 对齐（该类型未出现在 protocol barrel 里）。 */
+export type PermissionMode = "standard" | "acceptEdits" | "unrestricted" | "strict";
+
 export interface ServerStatus {
   state: ServerState;
   wsUrl?: string;
@@ -45,7 +48,11 @@ export type HaruyukiEvent =
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
   listAgents(): Promise<AgentSummary[]>;
-  startRuntime(agentId: string): Promise<RuntimeScope>;
+  startRuntime(
+    agentId: string,
+    mode?: PermissionMode,
+    conversationId?: string,
+  ): Promise<RuntimeScope>;
   sendMessage(text: string): Promise<void>;
   respondApproval(requestId: string, decision: "allow" | "deny"): Promise<void>;
   interrupt(): Promise<void>;

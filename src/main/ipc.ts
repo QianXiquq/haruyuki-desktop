@@ -1,6 +1,13 @@
 import { ipcMain } from "electron";
-import type { ServerStatus } from "@/shared/ipc-contract";
+import type { PermissionMode, ServerStatus } from "@/shared/ipc-contract";
 import type { AppServerBridge } from "./app-server";
+
+const PERMISSION_MODES: readonly PermissionMode[] = [
+  "standard",
+  "acceptEdits",
+  "unrestricted",
+  "strict",
+];
 
 export interface IpcDeps {
   getStatus(): ServerStatus;
@@ -16,12 +23,25 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("haruyuki:listAgents", () => deps.getBridge().listAgents());
 
-  ipcMain.handle("haruyuki:startRuntime", (_event, agentId: unknown) => {
-    if (typeof agentId !== "string" || !agentId) {
-      throw new Error("startRuntime 需要非空的 agentId");
-    }
-    return deps.getBridge().startRuntime(agentId);
-  });
+  ipcMain.handle(
+    "haruyuki:startRuntime",
+    (_event, agentId: unknown, mode: unknown, conversationId: unknown) => {
+      if (typeof agentId !== "string" || !agentId) {
+        throw new Error("startRuntime 需要非空的 agentId");
+      }
+      if (mode !== undefined && !PERMISSION_MODES.includes(mode as PermissionMode)) {
+        throw new Error(`未知的权限模式：${String(mode)}`);
+      }
+      if (conversationId !== undefined && typeof conversationId !== "string") {
+        throw new Error("conversationId 必须是字符串");
+      }
+      return deps.getBridge().startRuntime(
+        agentId,
+        mode as PermissionMode | undefined,
+        conversationId as string | undefined,
+      );
+    },
+  );
 
   ipcMain.handle("haruyuki:sendMessage", (_event, text: unknown) => {
     if (typeof text !== "string" || !text.trim()) {

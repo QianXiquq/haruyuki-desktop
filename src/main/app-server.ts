@@ -1,6 +1,6 @@
 import { AppServerClient } from "haruyuki/app-server-client";
 import type { WsProtocolCommand, WsProtocolMessage } from "haruyuki/app-server-protocol";
-import type { AgentSummary, HaruyukiEvent, RuntimeScope } from "@/shared/ipc-contract";
+import type { AgentSummary, HaruyukiEvent, PermissionMode, RuntimeScope } from "@/shared/ipc-contract";
 
 type Frame = Record<string, unknown> & { type?: string };
 
@@ -25,6 +25,16 @@ export function extractText(value: unknown): string {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** 工具参数在线上是 JSON 字符串，能解析就解析，方便界面展示。 */
+function parseArgs(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -85,8 +95,16 @@ export class AppServerBridge {
     });
   }
 
-  async startRuntime(agentId: string): Promise<RuntimeScope> {
-    const response = await this.current.runtimeStart({ agent_id: agentId });
+  async startRuntime(
+    agentId: string,
+    mode?: PermissionMode,
+    conversationId?: string,
+  ): Promise<RuntimeScope> {
+    const response = await this.current.runtimeStart({
+      agent_id: agentId,
+      ...(mode ? { mode } : {}),
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+    });
     const frame = response as unknown as {
       success?: boolean;
       runtime?: RuntimeScope | null;
@@ -121,7 +139,13 @@ export class AppServerBridge {
     this.current.send(this.buildInput(runtime, {
       kind: "approval_response",
       request_id: requestId,
-      decision,
+      // ⚠️ decision 是**判别对象** { behavior }，不是裸字符串 "allow"/"deny"。
+      // 发裸字符串会让服务端解析失败并回 loop_error（实测踩过）。
+      // 另外 deny 分支的 message 是必填。
+      decision:
+        decision === "allow"
+          ? { behavior: "allow" }
+          : { behavior: "deny", message: "用户在 Haruyuki Desktop 中拒绝" },
     }));
   }
 
@@ -208,7 +232,19 @@ export class AppServerBridge {
           kind: "tool_call",
           id: str(delta.id) || `tool-${Date.now()}`,
           name: str(toolCall.name) || "tool",
-          input: toolCall.arguments ?? null,
+          input: parseArgs(toolCall.arguments),
+        });
+        return;
+      }
+      case "approval_request_message": {
+        // 需要审批的工具，其调用信息随 approval_request_message 到达
+        // （不是单独的 tool_call_message —— 实测确认）。
+        const toolCall = asRecord(delta.tool_call);
+        this.emit({
+          kind: "tool_call",
+          id: str(toolCall.tool_call_id) || str(delta.id),
+          name: str(toolCall.name) || "tool",
+          input: parseArgs(toolCall.arguments),
         });
         return;
       }

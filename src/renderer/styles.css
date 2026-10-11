@@ -33,7 +33,14 @@ body {
 .status-error { color: var(--err); }
 .status-starting { color: var(--warn); }
 
-.agent-picker { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.mode-picker { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.mode-picker label { color: var(--muted); font-size: 12px; }
+.mode-picker select {
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+
+.agent-picker { display: flex; align-items: center; gap: 8px; }
 .agent-picker label { color: var(--muted); font-size: 12px; }
 .agent-picker select {
   background: var(--bg); color: var(--fg);

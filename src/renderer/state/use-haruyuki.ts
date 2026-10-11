@@ -3,6 +3,7 @@ import type {
   AgentSummary,
   ChatItem,
   HaruyukiApi,
+  PermissionMode,
   RuntimeScope,
   ServerStatus,
 } from "@/shared/ipc-contract";
@@ -119,11 +120,22 @@ export function useHaruyuki() {
   }, []);
 
   const selectAgent = useCallback(
-    async (agentId: string) => {
+    async (agentId: string, mode?: PermissionMode) => {
       await guard("连接 agent", async () => {
-        const scope = await window.haruyuki.startRuntime(agentId);
+        const scope = await window.haruyuki.startRuntime(agentId, mode);
         setRuntime(scope);
         setItems([]);
+      });
+    },
+    [guard],
+  );
+
+  /** 切换权限模式：复用同一个会话，不丢上下文。 */
+  const setPermissionMode = useCallback(
+    async (agentId: string, mode: PermissionMode, conversationId: string) => {
+      await guard("切换权限模式", async () => {
+        const scope = await window.haruyuki.startRuntime(agentId, mode, conversationId);
+        setRuntime(scope);
       });
     },
     [guard],
@@ -165,6 +177,7 @@ export function useHaruyuki() {
     runtime,
     refreshAgents,
     selectAgent,
+    setPermissionMode,
     send,
     respond,
     interrupt,

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json",
     "postinstall": "node scripts/materialize-vendor.mjs",
     "check:integration": "bun scripts/integration-check.ts",
-    "vendor:sync": "node scripts/materialize-vendor.mjs"
+    "vendor:sync": "node scripts/materialize-vendor.mjs",
+    "check:approval": "bun scripts/approval-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
