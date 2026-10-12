@@ -4,24 +4,44 @@ import { ApprovalCard } from "./components/ApprovalCard";
 import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
 import { RecallPanel } from "./components/RecallPanel";
+import { StatusBar } from "./components/StatusBar";
 import { WorkingDirectory } from "./components/WorkingDirectory";
 import type { PermissionMode } from "@/shared/ipc-contract";
+import { cacheHitRate, formatTokens } from "@/shared/ipc-contract";
 import { useHaruyuki } from "./state/use-haruyuki";
 
-const STATE_LABEL: Record<string, string> = {
-  starting: "正在启动 app-server…",
-  connected: "已连接",
-  disconnected: "连接已断开",
-  error: "连接失败",
-};
-
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
-  standard: "标准（工具需审批）",
+  standard: "标准",
   acceptEdits: "自动接受编辑",
-  unrestricted: "不受限（全部放行）",
+  unrestricted: "不受限",
   strict: "严格",
 };
 
+const PERMISSION_HINT: Record<PermissionMode, string> = {
+  standard: "工具调用需要审批",
+  acceptEdits: "自动接受文件编辑",
+  unrestricted: "全部自动放行，不弹审批",
+  strict: "最严格",
+};
+
+/**
+ * 布局（参考 DeepSeek Harness 的界面）：
+ *
+ * ```
+ * ┌─────────────┬──────────────────────────────────────┐
+ * │ 新会话       │ 顶栏：标题 · 权限 · agent · 目录      │
+ * │ 会话列表     ├──────────────────────────────────────┤
+ * │ ──          │ 消息（居中限宽，不画气泡）            │
+ * │ 召回         │                                      │
+ * │ 用量         │ 输入卡片                             │
+ * └─────────────┴──────────────────────────────────────┤
+ *                │ 底部状态条                           │
+ * ```
+ *
+ * 关键取舍：**召回与用量从右侧独立面板搬进左侧栏**，于是横向只剩两列，
+ * 对话区从约 560px 提到约 780px —— 这是"挤、土"的结构性原因之一。
+ * 状态摘要下沉到底部状态条，日常一眼可见而不占版面。
+ */
 export function App() {
   const {
     status,
@@ -35,14 +55,12 @@ export function App() {
     loadingHistory,
     recall,
     recallBusy,
+    recallDirty,
+    restarting,
     usageByItem,
     usageTotals,
     lastUsage,
     cwd,
-    changeWorkingDirectory,
-    listDirectory,
-    recallDirty,
-    restarting,
     applyRecallSetting,
     restartServer,
     refreshAgents,
@@ -54,6 +72,8 @@ export function App() {
     reloadHistory,
     refreshRecall,
     buildRecallIndex,
+    changeWorkingDirectory,
+    listDirectory,
     send,
     respond,
     interrupt,
@@ -61,11 +81,8 @@ export function App() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  // 默认用 standard：服务端默认是 unrestricted（一律自动放行），
-  // 那样界面上永远不会出现审批卡片。
   const [mode, setMode] = useState<PermissionMode>("standard");
 
-  // 等 app-server 连上再拉 agent 列表，避免在 IPC 就绪前调用。
   useEffect(() => {
     if (status.state !== "connected") return;
     void refreshAgents();
@@ -73,13 +90,7 @@ export function App() {
 
   const firstAgentId = agents[0]?.id ?? null;
 
-  /**
-   * 进入界面的引导流程，**只跑一次**。
-   *
-   * 关键点是它必须等 agent 列表出来之后再决定"恢复哪个会话"，而不是一看到
-   * 第一个 agent 就 runtime_start —— 后者每次都会新建一个 `local-conv-N`
-   * （修复前就是这个行为，会话数因此一路增长）。
-   */
+  /** 引导流程只跑一次，且**必须等 agent 列表出来**再决定恢复哪个会话。 */
   const bootstrapped = useRef(false);
   useEffect(() => {
     if (bootstrapped.current) return;
@@ -87,13 +98,11 @@ export function App() {
     bootstrapped.current = true;
     setSelectedId(firstAgentId);
     void restoreLastConversation(firstAgentId, mode);
-    // mode 是引导时的初始权限，刻意不进依赖：中途改权限不该重跑引导。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstAgentId, restoreLastConversation, status.state]);
 
   async function onSelectAgent(agentId: string): Promise<void> {
     setSelectedId(agentId);
-    // 换 agent = 新会话。旧会话仍在左侧列表里，随时可以点回去。
     await selectAgent(agentId, mode);
   }
 
@@ -109,7 +118,6 @@ export function App() {
 
   async function onModeChange(next: PermissionMode): Promise<void> {
     setMode(next);
-    // 已经有 runtime 时复用同一个会话，避免切换模式丢掉上下文。
     if (runtime && selectedId) {
       await setPermissionMode(selectedId, next, runtime.conversation_id);
     }
@@ -123,90 +131,101 @@ export function App() {
     await send(text);
   }
 
+  const agentName = agents.find((a) => a.id === selectedId)?.name ?? selectedId ?? "（未选择 agent）";
+
+  // 底部状态条：召回轮数从当前会话的注入痕迹里数出来（协议唯一能拿到的地方）。
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const hit = lastUsage ? cacheHitRate(lastUsage) : undefined;
+
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">Haruyuki Desktop</div>
-        <div className={`status status-${status.state}`}>
-          {STATE_LABEL[status.state] ?? status.state}
-          {/* 版本必须显示：0.1.3 与 0.2.0 的 protocol_version 都是 1，光看协议版本分辨不出来 */}
-          {status.haruyukiVersion ? ` · haruyuki v${status.haruyukiVersion}` : ""}
-          {status.protocolVersion ? ` · protocol v${status.protocolVersion}` : ""}
-          {status.backend ? ` · ${status.backend}` : ""}
-          {status.wsUrl ? ` · ${status.wsUrl}` : ""}
-          {status.error ? ` · ${status.error}` : ""}
-        </div>
-        <div className="mode-picker">
-          <label htmlFor="mode-select">权限</label>
-          <select
-            id="mode-select"
-            value={mode}
-            disabled={status.state !== "connected"}
-            onChange={(event) => void onModeChange(event.target.value as PermissionMode)}
-          >
-            {(Object.keys(PERMISSION_LABEL) as PermissionMode[]).map((value) => (
-              <option key={value} value={value}>
-                {PERMISSION_LABEL[value]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <AgentPicker
-          agents={agents}
-          selectedId={selectedId}
-          onSelect={(id) => void onSelectAgent(id)}
-          disabled={status.state !== "connected"}
-        />
-      </header>
-
       <div className="body">
-        <ConversationList
-          conversations={conversations}
-          activeId={activeConversationId}
-          disabled={status.state !== "connected"}
-          onSelect={(id) => void onSelectConversation(id)}
-          onCreate={() => void onCreateConversation()}
-        />
+        <aside className="sidebar">
+          <div className="sidebar-top">
+            <button
+              type="button"
+              className="new-conversation"
+              disabled={status.state !== "connected" || !selectedId}
+              onClick={() => void onCreateConversation()}
+            >
+              <span className="plus">＋</span> 新会话
+            </button>
+          </div>
 
-        <aside className="side-panels">
-          <RecallPanel
-            recall={recall}
-            busy={recallBusy}
-            dirty={recallDirty}
-            restarting={restarting}
-            status={status}
-            onRefresh={() => void refreshRecall()}
-            onBuild={() => void buildRecallIndex()}
-            onApply={(setting) => void applyRecallSetting(setting)}
-            onRestart={() => void restartServer()}
-            usageTotals={usageTotals}
-            lastUsage={lastUsage}
+          <ConversationList
+            conversations={conversations}
+            activeId={activeConversationId}
+            disabled={status.state !== "connected"}
+            onSelect={(id) => void onSelectConversation(id)}
           />
+
+          <div className="sidebar-panels">
+            <RecallPanel
+              recall={recall}
+              busy={recallBusy}
+              dirty={recallDirty}
+              restarting={restarting}
+              status={status}
+              usageTotals={usageTotals}
+              lastUsage={lastUsage}
+              onRefresh={() => void refreshRecall()}
+              onBuild={() => void buildRecallIndex()}
+              onApply={(setting) => void applyRecallSetting(setting)}
+              onRestart={() => void restartServer()}
+            />
+          </div>
         </aside>
 
-        <main className="chat">
-          <div className="chat-head">
-            <span className="chat-conversation">
-              {activeConversationId ?? "（未选择会话）"}
-            </span>
+        <main className="main">
+          <header className="topbar">
+            <div className="topbar-title">
+              <span className="topbar-name">{agentName}</span>
+              <span className="topbar-sub">
+                {activeConversationId ?? "尚无会话"}
+                {busy ? " · 生成中…" : ""}
+              </span>
+            </div>
             <WorkingDirectory
               cwd={cwd}
               disabled={status.state !== "connected"}
               onApply={changeWorkingDirectory}
               onList={listDirectory}
             />
-            <button
-              type="button"
-              className="reload-history"
-              disabled={!activeConversationId || status.state !== "connected"}
-              onClick={() => void reloadHistory()}
-            >
-              重新加载历史
-            </button>
-          </div>
+            <div className="topbar-actions">
+              <select
+                className="mode-select"
+                value={mode}
+                disabled={status.state !== "connected"}
+                title={PERMISSION_HINT[mode]}
+                onChange={(event) => void onModeChange(event.target.value as PermissionMode)}
+              >
+                {(Object.keys(PERMISSION_LABEL) as PermissionMode[]).map((value) => (
+                  <option key={value} value={value}>
+                    {PERMISSION_LABEL[value]}
+                  </option>
+                ))}
+              </select>
+              <AgentPicker
+                agents={agents}
+                selectedId={selectedId}
+                onSelect={(id) => void onSelectAgent(id)}
+                disabled={status.state !== "connected"}
+              />
+              <button
+                type="button"
+                className="ghost"
+                disabled={!activeConversationId || status.state !== "connected"}
+                onClick={() => void reloadHistory()}
+                title="重新拉取当前会话的历史消息"
+              >
+                刷新
+              </button>
+            </div>
+          </header>
 
-          <MessageList items={items} loading={loadingHistory} usageByItem={usageByItem} />
+          <div className="thread">
+            <MessageList items={items} loading={loadingHistory} usageByItem={usageByItem} />
+          </div>
 
           <div className="approval-area">
             {approvals.map((approval) => (
@@ -219,32 +238,61 @@ export function App() {
           </div>
 
           <form className="composer" onSubmit={(event) => void onSubmit(event)}>
-            <textarea
-              value={draft}
-              placeholder={runtime ? "输入消息…（Enter 发送，Shift+Enter 换行）" : "先选择一个 agent"}
-              disabled={!runtime}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void onSubmit(event);
+            <div className="composer-box">
+              <textarea
+                value={draft}
+                placeholder={
+                  runtime ? "给 agent 发消息…（Enter 发送，Shift+Enter 换行）" : "先选择一个 agent"
                 }
-              }}
-            />
-            <div className="composer-actions">
-              <button type="submit" disabled={!runtime || busy || !draft.trim()}>
-                发送
-              </button>
-              <button
-                type="button"
-                className="interrupt"
-                disabled={!busy}
-                onClick={() => void interrupt()}
-              >
-                中断
-              </button>
+                disabled={!runtime}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void onSubmit(event);
+                  }
+                }}
+              />
+              <div className="composer-bar">
+                <span className="composer-hint">
+                  {busy ? "生成中…" : runtime ? "Enter 发送" : "等待 agent"}
+                </span>
+                <div className="composer-right">
+                  {lastUsage ? (
+                    <span className="composer-usage" title="上一轮用量（仅 token，无成本）">
+                      ↑{formatTokens(lastUsage.promptTokens)} ↓{formatTokens(lastUsage.completionTokens)}
+                      {hit !== undefined ? ` · 缓存 ${Math.round(hit)}%` : ""}
+                    </span>
+                  ) : null}
+                  <button type="button" className="interrupt" disabled={!busy} onClick={() => void interrupt()}>
+                    中断
+                  </button>
+                  <button
+                    type="submit"
+                    className="send"
+                    disabled={!runtime || busy || !draft.trim()}
+                    title="发送（Enter）"
+                  >
+                    ↑
+                  </button>
+                </div>
+              </div>
             </div>
           </form>
+
+          <StatusBar
+            summary={{
+              state: status.state,
+              ...(status.haruyukiVersion ? { haruyukiVersion: status.haruyukiVersion } : {}),
+              ...(status.protocolVersion ? { protocolVersion: status.protocolVersion } : {}),
+              ...(status.backend ? { backend: status.backend } : {}),
+              contextTokens: lastUsage?.contextTokens ?? 0,
+              totalTokens: usageTotals.promptTokens + usageTotals.completionTokens,
+              ...(hit !== undefined ? { cacheHitRate: hit } : {}),
+              recallTurns: activeConversation?.recallInjectedMessageIds?.length ?? 0,
+              recallMissing: recall?.missing ?? 0,
+            }}
+          />
         </main>
       </div>
     </div>

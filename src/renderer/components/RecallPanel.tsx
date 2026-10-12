@@ -217,8 +217,8 @@ export function RecallPanel({
       <div className="usage-panel">
         <div className="usage-head">本次运行用量</div>
         {usageTotals.turns === 0 ? (
-          <div className="recall-line muted small">
-            还没有产生用量。历史消息里没有用量数据（协议不下发），所以这里只统计本次运行。
+          <div className="recall-line muted small" title="历史消息的 usage 被协议丢掉了，所以只统计本次运行">
+            还没有用量（只统计本次运行）
           </div>
         ) : (
           <>
@@ -236,8 +236,8 @@ export function RecallPanel({
             ) : null}
           </>
         )}
-        <div className="recall-line muted small">
-          只有 token，<strong>没有成本</strong>：服务端不通过协议下发成本，本 GUI 也不做估算。
+        <div className="recall-line muted small" title="服务端不通过协议下发成本，本 GUI 也不做估算">
+          只有 token，无成本（协议不下发）
         </div>
       </div>
 
@@ -256,8 +256,8 @@ export function RecallPanel({
             {recall?.enabled ? "关闭召回" : "开启召回"}
           </button>
         </label>
-        <div className="recall-line muted small">
-          关掉后什么都不会被检索；重新开启还会<strong>清除断路器</strong>（跳闸后唯一的人工恢复手段）。
+        <div className="recall-line muted small" title="重新开启会清除断路器（跳闸后唯一的人工恢复手段）">
+          开启时会清除断路器
         </div>
 
         <label className="recall-field">
@@ -304,7 +304,9 @@ export function RecallPanel({
             onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, excerpt: e.target.value })); }}
           />
         </label>
-        <div className="recall-line muted small">{EXCERPT_LINES_UNREADABLE}</div>
+        <div className="recall-line muted small" title={EXCERPT_LINES_UNREADABLE}>
+          摘录行数无法从 status 反读
+        </div>
 
         <label className="recall-field">
           <span>字符预算</span>
@@ -325,7 +327,7 @@ export function RecallPanel({
             onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, charsTotal: e.target.value })); }}
           />
         </label>
-        <div className="recall-line muted small">两个都要填才会提交（上游要求成对给出）。</div>
+        <div className="recall-line muted small">两个都要填才提交</div>
 
         <label className="recall-field">
           <span>分数下限</span>
@@ -365,8 +367,8 @@ export function RecallPanel({
         <button type="button" className="recall-apply" disabled={!connected || busy || restarting} onClick={submit}>
           提交改动
         </button>
-        <div className="recall-line muted small">
-          ⚠️ 本 GUI 一律剥掉注入块（等价于 silent），所以「显示档位」只影响你自己在 TUI 里的观感。
+        <div className="recall-line muted small" title="本 GUI 一律剥掉注入块（等价于 silent），所以此项只影响你在 TUI 里的观感">
+          「显示档位」只影响 TUI 观感
         </div>
       </details>
 

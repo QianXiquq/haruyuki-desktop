@@ -5,7 +5,6 @@ interface Props {
   activeId: string | null;
   disabled: boolean;
   onSelect: (conversationId: string) => void;
-  onCreate: () => void;
 }
 
 /**
@@ -33,16 +32,9 @@ function timeOf(conversation: ConversationSummary): string {
   });
 }
 
-export function ConversationList({ conversations, activeId, disabled, onSelect, onCreate }: Props) {
+export function ConversationList({ conversations, activeId, disabled, onSelect }: Props) {
   return (
-    <aside className="sidebar">
-      <div className="sidebar-head">
-        <span>会话</span>
-        <button type="button" className="new-conversation" disabled={disabled} onClick={onCreate}>
-          + 新建
-        </button>
-      </div>
-      <div className="conversation-list">
+    <div className="conversation-list">
         {conversations.length === 0 ? (
           <div className="sidebar-empty">{disabled ? "等待连接…" : "还没有会话"}</div>
         ) : null}
@@ -65,7 +57,6 @@ export function ConversationList({ conversations, activeId, disabled, onSelect, 
             </button>
           );
         })}
-      </div>
-    </aside>
+    </div>
   );
 }

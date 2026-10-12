@@ -54,6 +54,15 @@ export interface ConversationSummary {
   lastMessageAt?: string;
   /** 在上下文里的消息条数。为 0 表示这是一个从未说过话的空会话。 */
   messageCount: number;
+  /**
+   * 服务端记录的**召回注入痕迹**：消息 id → 该消息所在轮次注入过召回几次。
+   *
+   * 实测来自 `conversation_list` 的 `context_management.recall_injected_turns`。
+   * 这是**唯一**能看出"recall 到底在哪几轮真的生效了"的数据 —— 它的价值在于：
+   * 我们一向把注入块整体剥掉（等价于 silent），于是 recall 是个黑盒；
+   * 有了它至少能标出"这一轮带过召回内容"，而不必把几千字原文倒进气泡里。
+   */
+  recallInjectedMessageIds?: string[];
 }
 
 /**
@@ -377,6 +386,31 @@ export interface DirectoryListing {
   folders: string[];
   success: boolean;
   error?: string;
+}
+
+/**
+ * 底部状态条要显示的东西。
+ *
+ * ⚠️ **这里没有"上下文占用百分比"** —— 参考设计里有 `上下文 47%`，但那个分母
+ * （上下文窗口上限）**在协议上拿不到**：`Conversation.context_window_limit` 在类型定义里
+ * 存在，但本地后端实测**不返回**；`list_models` 的条目里也没有这个字段。
+ * 所以状态条只能显示**绝对用量**。宁可少一个数字，也不编一个百分比出来。
+ */
+export interface StatusSummary {
+  state: ServerState;
+  haruyukiVersion?: string;
+  protocolVersion?: number;
+  backend?: string;
+  /** 当前会话上下文的 token 规模（绝对值）。 */
+  contextTokens: number;
+  /** 本次运行的累计 token。 */
+  totalTokens: number;
+  /** 缓存命中率（0–100，拿不到时为 undefined）。 */
+  cacheHitRate?: number;
+  /** 有几轮用过召回。 */
+  recallTurns: number;
+  /** 召回索引里还有多少会话没建（>0 = 部分会话静默失效）。 */
+  recallMissing: number;
 }
 
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */

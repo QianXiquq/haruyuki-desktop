@@ -28,8 +28,14 @@ function renderItem(item: ChatItem) {
     case "user":
       return <div className="msg user">{item.text}</div>;
     case "assistant":
-      // 用量行放在气泡**下方**，因为它统计的正是这条回复的消耗。
-      return <div className="msg assistant">{item.text}</div>;
+      // 参考设计的正文是"裸文本"，但纯裸文本会和 user 消息混成一团（实测看着确实分不清）。
+      // 折中：**不画气泡**，只给一条左侧细线和一个小标签 —— 保留留白感，又能一眼分清角色。
+      return (
+        <div className="msg assistant">
+          <span className="msg-role">agent</span>
+          {item.text}
+        </div>
+      );
     case "reasoning":
       return <details className="msg reasoning"><summary>推理</summary><pre>{item.text}</pre></details>;
     case "tool_call":

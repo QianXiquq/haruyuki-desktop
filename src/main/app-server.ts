@@ -198,12 +198,20 @@ function toConversationSummary(raw: unknown): ConversationSummary {
   const createdAt = str(conversation.created_at);
   const updatedAt = str(conversation.updated_at);
   const lastMessageAt = str(conversation.last_message_at);
+  // `context_management.recall_injected_turns` 的**键**形如
+  // `transcript:<base64 会话 key>:<消息 id>`，值是次数。我们只关心消息 id 部分。
+  const recallTurns = asRecord(asRecord(conversation.context_management).recall_injected_turns);
+  const recallInjectedMessageIds = Object.keys(recallTurns)
+    .map((key) => key.slice(key.lastIndexOf(":") + 1))
+    .filter((id) => id.length > 0);
+
   return {
     id: str(conversation.id),
     agentId: str(conversation.agent_id),
     messageCount: Array.isArray(conversation.in_context_message_ids)
       ? conversation.in_context_message_ids.length
       : 0,
+    ...(recallInjectedMessageIds.length > 0 ? { recallInjectedMessageIds } : {}),
     ...(createdAt ? { createdAt } : {}),
     ...(updatedAt ? { updatedAt } : {}),
     ...(lastMessageAt ? { lastMessageAt } : {}),

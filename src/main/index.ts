@@ -47,8 +47,12 @@ function setStatus(next: ServerStatus): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 780,
+    // 两列布局 + 居中限宽的对话正文：1100 会让对话区只剩约 560px，"挤、土"的
+    // 结构性原因之一。加大后对话区约 780px（= --thread-max），长行才好读。
+    width: 1440,
+    height: 940,
+    minWidth: 1000,
+    minHeight: 640,
     show: false,
     title: "Haruyuki Desktop",
     backgroundColor: "#14161a",
