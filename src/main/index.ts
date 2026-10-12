@@ -104,6 +104,39 @@ function shutdown(): void {
   server = null;
 }
 
+/** 防止连点两次导致两个服务端进程并存。 */
+let restarting = false;
+
+/**
+ * 重启 app-server。
+ *
+ * 存在的理由不只是"方便"：recall 的设置经 `settingsManager` **启动时读一次就缓存
+ * 在内存里**（`getSettings()` 直接 `return { ...this.settings }`），所以**改设置
+ * 对已经在跑的服务端无效** —— 必须换一个进程才生效。
+ *
+ * 顺带修掉一个既有缺口：窗口 reload 之后主进程原本既不重连也不重启，状态会永久停在
+ * "正在启动 app-server…"。现在有了这个动作，界面就有了自救手段。
+ *
+ * ⚠️ 重启会丢当前的 runtime scope（要重新 `runtime_start`），但**会话历史不丢**
+ * —— 那些都在磁盘上，渲染进程重启后会按"上次会话"重新恢复。
+ */
+async function restartAppServer(): Promise<void> {
+  if (restarting) throw new Error("服务端正在重启中");
+  restarting = true;
+  try {
+    shutdown();
+    // 让出事件循环：`server.stop()` 只是发 SIGTERM，紧接着 spawn 新进程的话，
+    // 旧进程可能还没来得及释放它占用的资源。
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await bootAppServer();
+    if (status.state === "error") {
+      throw new Error(status.error ?? "重启后未能连接");
+    }
+  } finally {
+    restarting = false;
+  }
+}
+
 void app.whenReady().then(() => {
   // IPC 必须在窗口加载前注册：渲染进程一挂载就会调用 listAgents，
   // 而 app-server 连接需要几秒，晚注册会报 "No handler registered"。
@@ -113,6 +146,7 @@ void app.whenReady().then(() => {
       if (!bridge) throw new Error("app-server 尚未连接，请稍候");
       return bridge;
     },
+    restartAppServer,
   });
 
   createWindow();

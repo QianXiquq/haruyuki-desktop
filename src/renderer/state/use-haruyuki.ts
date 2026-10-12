@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   HaruyukiApi,
   PermissionMode,
+  RecallSettingValue,
   RecallStatusSummary,
   RuntimeScope,
   ServerStatus,
@@ -91,6 +92,9 @@ export function useHaruyuki() {
   const [agentIdRef] = useState<{ current: string | null }>({ current: null });
   const [recall, setRecall] = useState<RecallStatusSummary | null>(null);
   const [recallBusy, setRecallBusy] = useState(false);
+  /** 有设置改动尚未通过重启生效 —— 界面要一直挂着提示，直到重启完成。 */
+  const [recallDirty, setRecallDirty] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     const offStatus = window.haruyuki.onStatus(setStatus);
@@ -282,6 +286,72 @@ export function useHaruyuki() {
   }, [notice, recallBusy]);
 
   /**
+   * 改一个 recall 设置。
+   *
+   * ⚠️ **改完不会立即生效**：`settingsManager` 在进程启动时读一次并缓存，所以必须
+   * 重启 app-server。这里把 `recallDirty` 立起来，界面就一直提示，直到重启完成。
+   * **故意不自动重启** —— 重启会打断正在生成的回合。
+   */
+  const applyRecallSetting = useCallback(
+    async (setting: RecallSettingValue) => {
+      if (recallBusy) return;
+      setRecallBusy(true);
+      try {
+        const result = await window.haruyuki.recallSet(setting);
+        if (result.ok) {
+          setRecallDirty(true);
+          const after = await window.haruyuki.recallStatus();
+          if (after.ok) setRecall(parseRecallStatus(after.output));
+        } else {
+          notice(`修改 ${setting.knob} 失败：${result.error ?? "未知原因"}`, "error");
+        }
+      } catch (error) {
+        // 主进程的越界校验会在这里抛出（非法值根本不会 spawn 子命令）。
+        notice(`修改 ${setting.knob} 失败：${String(error)}`, "error");
+      } finally {
+        setRecallBusy(false);
+      }
+    },
+    [notice, recallBusy],
+  );
+
+  /**
+   * 重启 app-server —— 让 recall 设置生效，也是"reload 后状态卡死"的自救手段。
+   *
+   * 重启会丢当前 runtime scope，所以完成后要**重新 runtime_start 并把当前会话接回来**
+   * （会话历史在磁盘上，不会丢）。
+   */
+  const restartServer = useCallback(async () => {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      const next = await window.haruyuki.restartServer();
+      if (next.state !== "connected") {
+        notice(`重启后未能连接：${next.error ?? next.state}`, "error");
+        return;
+      }
+      setRecallDirty(false);
+      await refreshAgents();
+
+      const agentId = agentIdRef.current;
+      const conversationId = activeIdRef.current;
+      if (agentId && conversationId) {
+        // 复用同一个 conversation_id 把会话接回来；不传 mode，保持服务端当前模式。
+        const scope = await window.haruyuki.startRuntime(agentId, undefined, conversationId);
+        setRuntime(scope);
+        activeIdRef.current = scope.conversation_id;
+        setActiveConversationId(scope.conversation_id);
+      }
+      await refreshRecall();
+      notice("服务端已重启，设置已生效。");
+    } catch (error) {
+      notice(`重启服务端失败：${String(error)}`, "error");
+    } finally {
+      setRestarting(false);
+    }
+  }, [activeIdRef, agentIdRef, notice, refreshAgents, refreshRecall, restarting]);
+
+  /**
    * 唯一的"进入某个会话"入口。
    *
    * `conversationId` 传空 = 新建会话（服务端会分配 `local-conv-N`）。
@@ -429,6 +499,10 @@ export function useHaruyuki() {
     loadingHistory,
     recall,
     recallBusy,
+    recallDirty,
+    restarting,
+    applyRecallSetting,
+    restartServer,
     refreshAgents,
     refreshConversations,
     reloadHistory,

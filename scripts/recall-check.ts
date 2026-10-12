@@ -15,7 +15,7 @@
  * 注意：`build` 会真实写入召回索引（位于 ~/.haruyuki/lc-local-backend 下）。
  */
 import { parseRecallStatus } from "@/shared/ipc-contract";
-import { runRecallCommand } from "@/main/recall";
+import { runRecallCommand, toRecallArgs } from "@/main/recall";
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
 function check(label: string, ok: boolean, detail?: string): void {
@@ -107,6 +107,96 @@ check("非法调用返回 ok === false", bogus.ok === false, `ok=${bogus.ok}`);
 check("非法调用带上了 error 说明", Boolean(bogus.error), bogus.error ?? "");
 check("非法调用的原文输出没有丢失", bogus.output.length > 0, `${bogus.output.length} 字符`);
 check("非法调用没有把设置改坏（复核仍是同一状态）", (await runRecallCommand(["status"])).ok);
+
+// ---------- ⑥ B1：设置旋钮「改 → 复核 → 改回」----------
+console.log("\n=== ⑥ 设置旋钮往返（每个都改一次再改回原值）===");
+const baseline = parseRecallStatus((await runRecallCommand(["status"])).output);
+console.log(`   基线：${JSON.stringify(baseline.settings)}`);
+
+/** 改一个旋钮，用 status 复核，然后改回基线值。 */
+async function roundTrip(
+  label: string,
+  args: string[],
+  /** 从 settings 里读出该旋钮当前值的函数，用于还原。 */
+  restoreArgs: string[],
+  verify: (after: ReturnType<typeof parseRecallStatus>) => boolean,
+  expectAfter: string,
+): Promise<void> {
+  const applied = await runRecallCommand(args);
+  if (!applied.ok) {
+    check(`${label} 能写入`, false, applied.error ?? "");
+    return;
+  }
+  const after = parseRecallStatus((await runRecallCommand(["status"])).output);
+  check(`${label} 写入了正确值`, verify(after), `期望 ${expectAfter}，实际 ${JSON.stringify(after.settings)}`);
+  const restored = await runRecallCommand(restoreArgs);
+  check(`${label} 能还原`, restored.ok, restored.error ?? "");
+}
+
+const s0 = baseline.settings;
+await roundTrip("limit", ["limit", "7"], ["limit", String(s0.limit ?? 3)], (a) => a.settings.limit === 7, "limit=7");
+await roundTrip("timeout", ["timeout", "2222"], ["timeout", String(s0.timeoutMs ?? 1000)], (a) => a.settings.timeoutMs === 2222, "timeout=2222");
+await roundTrip("dedup", ["dedup", "4"], ["dedup", String(s0.dedup ?? 10)], (a) => a.settings.dedup === 4, "dedup=4");
+await roundTrip("chars", ["chars", "333", "999"], ["chars", String(s0.excerptCharacters ?? 400), String(s0.totalCharacters ?? 1200)], (a) => a.settings.excerptCharacters === 333 && a.settings.totalCharacters === 999, "chars=333/999");
+await roundTrip("ratio", ["ratio", "0.5"], ["ratio", String(s0.ratio ?? 0.35)], (a) => a.settings.ratio === 0.5, "ratio=0.5");
+await roundTrip("diversity", ["diversity", "split"], ["diversity", String(s0.diversity ?? "none")], (a) => a.settings.diversity === "split", "diversity=split");
+await roundTrip("display", ["display", "full"], ["display", String(s0.display ?? "summary")], (a) => a.settings.display === "full", "display=full");
+
+// 还原复核：必须回到基线
+const restored = parseRecallStatus((await runRecallCommand(["status"])).output);
+check(
+  "全部旋钮已还原到基线",
+  JSON.stringify(restored.settings) === JSON.stringify(s0),
+  `基线 ${JSON.stringify(s0)} → 现在 ${JSON.stringify(restored.settings)}`,
+);
+
+// ---------- ⑦ B1：越界值必须被**我们**在 spawn 之前拒绝 ----------
+console.log("\n=== ⑦ 越界值：本地拒绝，且不写进 settings.json ===");
+const beforeInvalid = parseRecallStatus((await runRecallCommand(["status"])).output).settings;
+
+/** `toRecallArgs` 是主进程用的校验层；这里直接断言它会抛。 */
+function rejects(label: string, setting: Parameters<typeof toRecallArgs>[0]): void {
+  let threw: unknown = null;
+  try {
+    toRecallArgs(setting);
+  } catch (error) {
+    threw = error;
+  }
+  check(label, threw !== null, threw instanceof Error ? threw.message.slice(0, 70) : "没有抛错（应该拒绝！）");
+}
+
+rejects("ratio > 1 被拒绝（上游语义：不是裁剪）", { knob: "ratio", value: 1.5 });
+rejects("ratio < 0 被拒绝", { knob: "ratio", value: -0.1 });
+rejects("负数计数被拒绝", { knob: "limit", value: -1 });
+rejects("小数计数被拒绝", { knob: "timeout", value: 1.5 });
+rejects("非整数被拒绝", { knob: "dedup", value: Number.NaN });
+rejects("超大计数被拒绝", { knob: "limit", value: 999_999_999 });
+rejects("非法 diversity 被拒绝", { knob: "diversity", value: "banana" as never });
+rejects("非法 display 被拒绝", { knob: "display", value: "loud" as never });
+rejects("enabled 非布尔被拒绝", { knob: "enabled", value: "yes" as never });
+rejects("chars 缺一个数字被拒绝", { knob: "chars", value: { perEntry: 3, total: undefined as never } });
+
+// 合法值必须能通过（否则上面的"拒绝"可能只是把什么都拒了）
+let acceptedAll = true;
+try {
+  toRecallArgs({ knob: "limit", value: 0 });
+  toRecallArgs({ knob: "ratio", value: 0 });
+  toRecallArgs({ knob: "ratio", value: 1 });
+  toRecallArgs({ knob: "timeout", value: 0 });
+  toRecallArgs({ knob: "chars", value: { perEntry: 0, total: 0 } });
+  toRecallArgs({ knob: "enabled", value: true });
+  toRecallArgs({ knob: "diversity", value: "none" });
+} catch {
+  acceptedAll = false;
+}
+check("合法值（含边界 0 与 1）全部通过校验", acceptedAll);
+
+const afterInvalid = parseRecallStatus((await runRecallCommand(["status"])).output).settings;
+check(
+  "被拒绝的输入没有触碰 settings.json",
+  JSON.stringify(afterInvalid) === JSON.stringify(beforeInvalid),
+  `${JSON.stringify(beforeInvalid)} → ${JSON.stringify(afterInvalid)}`,
+);
 
 // ---------- 汇总 ----------
 const failed = checks.filter((c) => !c.ok);

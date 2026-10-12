@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { resolveHaruyukiLauncher } from "./server-process";
-import type { RecallCommandResult } from "@/shared/ipc-contract";
+import type { RecallCommandResult, RecallSettingValue } from "@/shared/ipc-contract";
 
 /**
  * 驱动 `haruyuki recall …` 子命令。
@@ -115,3 +115,95 @@ export function runRecallCommand(
  * 方便主进程侧的调用点就近 import。
  */
 export { parseRecallStatus } from "@/shared/ipc-contract";
+
+// ---------------------------------------------------------------------------
+// 设置写入（B1）
+// ---------------------------------------------------------------------------
+
+/** 非负整数的上界。上游只要求"非负安全整数"，这里给一个防手滑的合理上限。 */
+const MAX_COUNT = 1_000_000;
+
+function requireCount(knob: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${knob} 需要一个非负整数（0 表示关闭），收到：${JSON.stringify(value)}`);
+  }
+  if (value > MAX_COUNT) {
+    throw new Error(`${knob} 超出合理上限 ${MAX_COUNT}，收到：${value}`);
+  }
+  return value;
+}
+
+const DIVERSITY_MODES = ["none", "file", "split"] as const;
+const DISPLAY_TIERS = ["silent", "summary", "full"] as const;
+
+/**
+ * 把界面传来的设置翻译成 CLI 参数，并在**spawn 之前**校验。
+ *
+ * 越界直接抛错、**不执行任何子命令** —— 这样非法输入根本到不了上游，
+ * 也绝不会写进 `~/.haruyuki/settings.json`。上游自己还有第二道校验（实测
+ * `limit abc` 会非零退出且不改设置），两道都留着。
+ *
+ * 边界刻意与上游一致（**不自己发明**）：`ratio` 超出 `[0,1]` 是**拒绝**而不是裁剪
+ * ——上游的理由是 >1 意味着"任何分数都过不了门槛"，静默裁剪会让 recall 被无声关掉。
+ */
+export function toRecallArgs(setting: RecallSettingValue): string[] {
+  switch (setting.knob) {
+    case "enabled": {
+      // 先取到局部变量再判断：直接写 `typeof setting.value !== "boolean"` 会让
+      // TS 把整个 `setting` 收窄成 `never`（判别联合的成员本来就只有 boolean），
+      // 于是 if 分支里的 `setting.value` 取不到。
+      const value: unknown = setting.value;
+      if (typeof value !== "boolean") {
+        throw new Error(`enabled 需要布尔值，收到：${JSON.stringify(value)}`);
+      }
+      // `on` 在上游还会**清断路器**（那是跳闸后唯一的人工恢复手段），所以刻意用
+      // on/off 而不是写 recallEnabled 字段。
+      return [value ? "on" : "off"];
+    }
+
+    case "timeout":
+      return ["timeout", String(requireCount("timeout", setting.value))];
+    case "dedup":
+      return ["dedup", String(requireCount("dedup", setting.value))];
+    case "limit":
+      return ["limit", String(requireCount("limit", setting.value))];
+    case "excerpt":
+      return ["excerpt", String(requireCount("excerpt", setting.value))];
+
+    case "chars": {
+      const perEntry = requireCount("chars(单条)", setting.value?.perEntry);
+      const total = requireCount("chars(总预算)", setting.value?.total);
+      return ["chars", String(perEntry), String(total)];
+    }
+
+    case "ratio": {
+      const value = setting.value;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+        throw new Error(`ratio 需要 0 到 1 之间的数，收到：${JSON.stringify(value)}`);
+      }
+      return ["ratio", String(value)];
+    }
+
+    case "diversity":
+      if (!DIVERSITY_MODES.includes(setting.value)) {
+        throw new Error(`diversity 只能是 ${DIVERSITY_MODES.join(" / ")}，收到：${JSON.stringify(setting.value)}`);
+      }
+      return ["diversity", setting.value];
+
+    case "display":
+      if (!DISPLAY_TIERS.includes(setting.value)) {
+        throw new Error(`display 只能是 ${DISPLAY_TIERS.join(" / ")}，收到：${JSON.stringify(setting.value)}`);
+      }
+      return ["display", setting.value];
+
+    default: {
+      // 穷尽性检查：以后加了旋钮但忘了在这里处理，`tsc` 会在这个实参上报错。
+      return assertNever(setting, "未知的 recall 设置");
+    }
+  }
+}
+
+/** 编译期穷尽性断言：走到这里说明联合类型还有没处理的成员。 */
+function assertNever(value: never, label: string): never {
+  throw new Error(`${label}：${JSON.stringify(value)}`);
+}

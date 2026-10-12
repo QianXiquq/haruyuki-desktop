@@ -81,9 +81,9 @@ body {
 
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
-/* 右侧面板列（B0：recall） */
+/* 右侧面板列（B0：recall 状态；B1：recall 设置表单） */
 .side-panels {
-  width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 10px;
+  width: 300px; flex: 0 0 300px; display: flex; flex-direction: column; gap: 10px;
   background: var(--panel); border-left: 1px solid var(--border);
   padding: 10px; overflow-y: auto; min-height: 0;
 }
@@ -103,6 +103,22 @@ body {
   border-radius: 6px; padding: 6px 8px;
 }
 .recall-build { background: #2a3040; color: var(--fg); font-weight: 500; font-size: 12px; padding: 6px 10px; }
+
+/* B1：设置表单 */
+.recall-settings { border-top: 1px solid var(--border); padding-top: 8px; }
+.recall-settings > summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.recall-settings > summary:hover { color: var(--fg); }
+.recall-field { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
+.recall-field > span:first-child { flex: 0 0 74px; color: var(--muted); }
+.recall-field input, .recall-field select {
+  flex: 1; min-width: 0; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px;
+}
+.recall-field .recall-toggle { flex: 1; background: #2a3040; color: var(--fg); font-size: 12px; font-weight: 500; padding: 5px 8px; }
+.recall-apply { background: var(--accent); color: #0d1424; font-size: 12px; font-weight: 600; padding: 6px 10px; width: 100%; }
+.recall-restart { background: var(--warn); color: #2a1e0a; font-size: 12px; font-weight: 600; padding: 5px 8px; margin-top: 6px; }
+.recall-restart.idle { background: #2a3040; color: var(--fg); font-weight: 500; width: 100%; }
+.recall-line.warn .recall-restart { margin-left: 0; display: block; width: 100%; }
 .chat-head {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 16px; border-bottom: 1px solid var(--border);

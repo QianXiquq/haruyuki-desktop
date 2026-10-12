@@ -34,6 +34,10 @@ export function App() {
     loadingHistory,
     recall,
     recallBusy,
+    recallDirty,
+    restarting,
+    applyRecallSetting,
+    restartServer,
     refreshAgents,
     selectAgent,
     openConversation,
@@ -162,9 +166,13 @@ export function App() {
           <RecallPanel
             recall={recall}
             busy={recallBusy}
+            dirty={recallDirty}
+            restarting={restarting}
             status={status}
             onRefresh={() => void refreshRecall()}
             onBuild={() => void buildRecallIndex()}
+            onApply={(setting) => void applyRecallSetting(setting)}
+            onRestart={() => void restartServer()}
           />
         </aside>
 

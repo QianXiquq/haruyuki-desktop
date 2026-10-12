@@ -117,13 +117,25 @@ export interface RecallCommandResult {
   error?: string;
 }
 
-/** 从 `recall status` 的输出里解析出来的结构化信息（界面用，失败时为 null）。 */
+/** 从 `recall status` 里解析出来的当前设置值（能反读的部分）。 */
+export interface RecallSettingsSnapshot {
+  limit?: number;
+  excerptCharacters?: number;
+  totalCharacters?: number;
+  ratio?: number;
+  diversity?: RecallDiversity;
+  dedup?: number;
+  timeoutMs?: number;
+  display?: RecallDisplayTier;
+}
+
 export interface RecallStatusSummary {
   enabled: boolean;
   /** 索引覆盖率描述，例如 `22/22 conversations indexed · 59 records`。 */
   indexLine: string;
   /** 有多少会话**还没有**索引（>0 意味着 recall 处于静默失效状态）。 */
   missing: number;
+  settings: RecallSettingsSnapshot;
   /** 原始输出，供界面原样展示 —— 解析失败时也不至于什么都看不到。 */
   raw: string;
 }
@@ -136,21 +148,90 @@ export interface RecallStatusSummary {
  *
  * **刻意写得宽容**：解析不出来不是错误。上游换个措辞就会解析失败，那时界面仍要把
  * `raw` 原样显示，绝不能因为"解析失败"就让用户什么都看不到。所以这里**不抛异常**，
- * 最坏情况只是 `missing` 拿不到。
+ * 最坏情况只是某些字段拿不到。
+ *
+ * ⚠️ `excerpt`（摘录**行数**）**不在** status 输出里（实测：改成 3 后 `Settings:` 行没变），
+ * 所以它的当前值**无法反读** —— 界面必须如实告诉用户这一点，不许假装知道。
  */
 export function parseRecallStatus(output: string): RecallStatusSummary {
   const lines = output.split("\n");
   const indexLine = lines.find((line) => line.startsWith("Index:")) ?? "";
   const recallLine = lines.find((line) => line.startsWith("Recall:")) ?? "";
+  const settingsLine = lines.find((line) => line.startsWith("Settings:")) ?? "";
+
   // `Index: 0/22 conversations indexed · 0 records · 22 without an index`
   const missingMatch = /(\d+)\s+without an index/.exec(indexLine);
+
+  const num = (re: RegExp): number | undefined => {
+    const match = re.exec(settingsLine);
+    return match?.[1] === undefined ? undefined : Number(match[1]);
+  };
+  const excerpt = /excerpt\s+(\d+)\/(\d+)\s+chars/.exec(settingsLine);
+  const diversityRaw = /diversity\s+(\w+)/.exec(settingsLine)?.[1];
+  const displayRaw = /display\s+(\w+)/.exec(settingsLine)?.[1];
+
+  const settings: RecallSettingsSnapshot = {
+    ...(num(/limit\s+(\d+)/) !== undefined ? { limit: num(/limit\s+(\d+)/) } : {}),
+    ...(excerpt?.[1] !== undefined ? { excerptCharacters: Number(excerpt[1]) } : {}),
+    ...(excerpt?.[2] !== undefined ? { totalCharacters: Number(excerpt[2]) } : {}),
+    ...(num(/ratio\s+([\d.]+)/) !== undefined ? { ratio: num(/ratio\s+([\d.]+)/) } : {}),
+    ...(num(/dedup\s+(\d+)/) !== undefined ? { dedup: num(/dedup\s+(\d+)/) } : {}),
+    ...(num(/timeout\s+(\d+)/) !== undefined ? { timeoutMs: num(/timeout\s+(\d+)/) } : {}),
+    ...(diversityRaw === "none" || diversityRaw === "file" || diversityRaw === "split"
+      ? { diversity: diversityRaw }
+      : {}),
+    ...(displayRaw === "silent" || displayRaw === "summary" || displayRaw === "full"
+      ? { display: displayRaw }
+      : {}),
+  };
+
   return {
     enabled: /Recall:\s*on\b/.test(recallLine),
     indexLine: indexLine.replace(/^Index:\s*/, "").trim(),
     missing: missingMatch?.[1] ? Number(missingMatch[1]) : 0,
+    settings,
     raw: output,
   };
 }
+
+/**
+ * recall 的 10 个可配置旋钮（上游 `haruyuki recall <setting> <value>`）。
+ *
+ * 做成**单个方法 + 联合类型**而不是 10 个方法：`tsc` 在编译期就能挡住拼错的旋钮名
+ * 和非法枚举值，而**范围**校验（数字上下界）放运行时做主进程里。
+ *
+ * 参数规则抄自上游解析器，**不要自己发明**：
+ * - `timeout` / `dedup` / `limit` / `excerpt` / `chars`：非负整数，`0` 一律表示"关闭"而非"未设置"
+ * - `ratio`：**0–1**；上游对 >1 **拒绝**而不是裁剪（因为 >1 意味着"任何分数都过不了门槛"，
+ *   静默裁剪会让 recall 被无声关掉）
+ * - `diversity` / `display`：枚举
+ *
+ * ⚠️ `excerpt`（摘录行数）**不会出现在 `haruyuki recall status` 的摘要行里**（实测：
+ * 改成 3 之后 `Settings:` 那行没变）。所以界面**无法从 status 反读它的当前值**，
+ * 这一项要显式告诉用户"显示的是默认值/你上次设的值"。
+ */
+export type RecallKnob =
+  | "enabled"
+  | "timeout"
+  | "dedup"
+  | "limit"
+  | "excerpt"
+  | "chars"
+  | "ratio"
+  | "diversity"
+  | "display";
+
+export type RecallDiversity = "none" | "file" | "split";
+export type RecallDisplayTier = "silent" | "summary" | "full";
+
+export type RecallSettingValue =
+  | { knob: "enabled"; value: boolean }
+  | { knob: "timeout" | "dedup" | "limit" | "excerpt"; value: number }
+  /** `chars` 是**两个**数字：单条摘录预算 + 整轮总预算。 */
+  | { knob: "chars"; value: { perEntry: number; total: number } }
+  | { knob: "ratio"; value: number }
+  | { knob: "diversity"; value: RecallDiversity }
+  | { knob: "display"; value: RecallDisplayTier };
 
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
@@ -173,6 +254,21 @@ export interface HaruyukiApi {
    * 显式点击触发，绝不自动执行 —— 索引为空会让 recall 静默失效。
    */
   recallBuild(): Promise<RecallCommandResult>;
+  /**
+   * 改一个 recall 设置。**越界的值会被主进程直接拒绝、不会 spawn**（上游还有第二道校验）。
+   *
+   * ⚠️ 改完**不会立即生效**：`settingsManager` 在进程启动时读一次并缓存，所以必须
+   * 调 `restartServer()` 换一个进程。调用方要负责把这个前提告诉用户。
+   */
+  recallSet(setting: RecallSettingValue): Promise<RecallCommandResult>;
+  /**
+   * 重启 app-server。
+   *
+   * 两个用途：① 让改动过的 recall 设置生效；② 从"窗口 reload 后状态卡在
+   * 正在启动"里自救。会丢当前 runtime scope（需要重新 runtime_start），
+   * 但**会话历史不丢**（在磁盘上）。
+   */
+  restartServer(): Promise<ServerStatus>;
   onStatus(handler: (status: ServerStatus) => void): () => void;
   onEvent(handler: (event: HaruyukiEvent) => void): () => void;
 }

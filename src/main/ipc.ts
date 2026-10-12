@@ -1,7 +1,11 @@
 import { ipcMain } from "electron";
-import type { PermissionMode, ServerStatus } from "@/shared/ipc-contract";
+import type {
+  PermissionMode,
+  RecallSettingValue,
+  ServerStatus,
+} from "@/shared/ipc-contract";
 import type { AppServerBridge } from "./app-server";
-import { runRecallCommand } from "./recall";
+import { runRecallCommand, toRecallArgs } from "./recall";
 
 const PERMISSION_MODES: readonly PermissionMode[] = [
   "standard",
@@ -13,6 +17,8 @@ const PERMISSION_MODES: readonly PermissionMode[] = [
 export interface IpcDeps {
   getStatus(): ServerStatus;
   getBridge(): AppServerBridge;
+  /** 重启 app-server（让 recall 设置生效，或从 reload 后卡死里自救）。 */
+  restartAppServer(): Promise<void>;
 }
 
 /**
@@ -85,4 +91,17 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   // 届时各建一个**带校验**的方法（数字范围 / 枚举在这里就挡掉）。
   ipcMain.handle("haruyuki:recallStatus", () => runRecallCommand(["status"]));
   ipcMain.handle("haruyuki:recallBuild", () => runRecallCommand(["build"]));
+
+  ipcMain.handle("haruyuki:recallSet", (_event, setting: unknown) => {
+    // `toRecallArgs` 会在**spawn 之前**校验并抛错 —— 非法值根本到不了上游，
+    // 也绝不会写进 ~/.haruyuki/settings.json。
+    const args = toRecallArgs(setting as RecallSettingValue);
+    return runRecallCommand(args);
+  });
+
+  ipcMain.handle("haruyuki:restartServer", async () => {
+    await deps.restartAppServer();
+    // 回传重启后的状态，调用方不必再猜一次。
+    return deps.getStatus();
+  });
 }

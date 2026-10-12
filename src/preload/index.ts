@@ -30,6 +30,10 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallStatus") as ReturnType<HaruyukiApi["recallStatus"]>,
   recallBuild: () =>
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
+  recallSet: (setting) =>
+    ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
+  restartServer: () =>
+    ipcRenderer.invoke("haruyuki:restartServer") as ReturnType<HaruyukiApi["restartServer"]>,
   onStatus: (handler) => subscribe<ServerStatus>("haruyuki:status", handler),
   onEvent: (handler) => subscribe<HaruyukiEvent>("haruyuki:event", handler),
 };

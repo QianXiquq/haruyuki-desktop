@@ -1,40 +1,163 @@
-import { useEffect } from "react";
-import type { RecallStatusSummary, ServerStatus } from "@/shared/ipc-contract";
+import { useEffect, useRef, useState } from "react";
+import type {
+  RecallDiversity,
+  RecallDisplayTier,
+  RecallSettingValue,
+  RecallStatusSummary,
+  ServerStatus,
+} from "@/shared/ipc-contract";
 
 interface Props {
   recall: RecallStatusSummary | null;
   busy: boolean;
+  dirty: boolean;
+  restarting: boolean;
   status: ServerStatus;
   onRefresh: () => void;
   onBuild: () => void;
+  onApply: (setting: RecallSettingValue) => void;
+  onRestart: () => void;
 }
 
-/**
- * recall 面板（B0：只看状态 + 手动构建索引）。
- *
- * ## 这个面板为什么必须存在
- *
- * recall 是 haruyuki 的**被动**能力：每轮发送前服务端自动检索历史会话与 MemFS
- * 记忆文件，命中就注入到用户消息里。它在**协议层没有任何命令**。
- *
- * 问题在于：**索引为空时 recall 静默失效** —— 查询返回 `no-match` 走的是**正常路径**
- * 而**不是** degraded，因此**不发任何通知**。用户只会看到 "agent 没答上之前聊过的事"，
- * 没有任何线索指向 recall。而上游给出的唯一自救办法 `haruyuki recall build`
- * 是一条 **CLI/TUI 命令**，GUI 用户没有它就永远好不了。
- *
- * 所以这里的"构建索引"按钮不是锦上添花，它是**GUI 能自救的最低条件**。
- */
-export function RecallPanel({ recall, busy, status, onRefresh, onBuild }: Props) {
-  const connected = status.state === "connected";
+/** 表单里的草稿值。全部按字符串存，避免数字输入框在编辑中途被强行转成数字。 */
+interface Draft {
+  timeout: string;
+  dedup: string;
+  limit: string;
+  excerpt: string;
+  charsPer: string;
+  charsTotal: string;
+  ratio: string;
+  diversity: RecallDiversity;
+  display: RecallDisplayTier;
+}
 
-  // 连上之后读一次状态。刻意不在每次回合后自动重读 —— 那会在每轮对话后多起一个
-  // 子进程，而索引覆盖率并不会每轮都变。
+const EMPTY: Draft = {
+  timeout: "",
+  dedup: "",
+  limit: "",
+  excerpt: "",
+  charsPer: "",
+  charsTotal: "",
+  ratio: "",
+  diversity: "none",
+  display: "summary",
+};
+
+/**
+ * ⚠️ `excerpt`（摘录**行数**）的当前值**无法从 status 反读**：实测改完 `excerpt 3`
+ * 之后，`Settings:` 那行仍然只显示 `excerpt 400/1200 chars`（那是**字符**预算，
+ * 不是行数）。所以这里只能留空并如实标注，不许假装知道。
+ */
+const EXCERPT_LINES_UNREADABLE =
+  "「摘录行数」无法从 status 反读（上游只在 status 里报告字符预算，不报告行数）。留空 = 不改动。";
+
+/**
+ * recall 面板。
+ *
+ * ## 为什么"状态 + 建索引"是必需的（B0）
+ *
+ * recall 是**被动**能力：每轮发送前服务端自动检索历史会话与 MemFS 记忆文件，命中就注入。
+ * 它在**协议层没有任何命令**。而**索引为空时 recall 静默失效** —— 查询返回 `no-match`
+ * 走的是正常路径而**不是** degraded，因此**不发任何通知**。用户只看到 "agent 没答上
+ * 以前聊过的事"。上游唯一的自救办法 `haruyuki recall build` 是 **TUI 命令**，
+ * GUI 用户没有它就永远好不了。
+ *
+ * ## 为什么"设置 + 重启"是必需的（B1）
+ *
+ * `settingsManager` 在进程启动时读一次并缓存（`getSettings()` 直接
+ * `return { ...this.settings }`），所以**改设置对已经在跑的服务端无效** ——
+ * 必须换一个进程。所以改完要重启，而重启动作顺带把"窗口 reload 后状态卡死"也修了。
+ */
+export function RecallPanel({
+  recall,
+  busy,
+  dirty,
+  restarting,
+  status,
+  onRefresh,
+  onBuild,
+  onApply,
+  onRestart,
+}: Props) {
+  const connected = status.state === "connected";
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  /** 用户正在编辑时不要用刷新回来的值覆盖他的输入。 */
+  const editing = useRef(false);
+
   useEffect(() => {
     if (connected) onRefresh();
   }, [connected, onRefresh]);
 
+  useEffect(() => {
+    if (!recall || editing.current) return;
+    setDraft((prev) => ({
+      ...prev,
+      ...(recall.settings.timeoutMs !== undefined ? { timeout: String(recall.settings.timeoutMs) } : {}),
+      ...(recall.settings.dedup !== undefined ? { dedup: String(recall.settings.dedup) } : {}),
+      ...(recall.settings.limit !== undefined ? { limit: String(recall.settings.limit) } : {}),
+      ...(recall.settings.excerptCharacters !== undefined
+        ? { charsPer: String(recall.settings.excerptCharacters) }
+        : {}),
+      ...(recall.settings.totalCharacters !== undefined
+        ? { charsTotal: String(recall.settings.totalCharacters) }
+        : {}),
+      ...(recall.settings.ratio !== undefined ? { ratio: String(recall.settings.ratio) } : {}),
+      ...(recall.settings.diversity !== undefined ? { diversity: recall.settings.diversity } : {}),
+      ...(recall.settings.display !== undefined ? { display: recall.settings.display } : {}),
+    }));
+  }, [recall]);
+
   const missing = recall?.missing ?? 0;
   const neverIndexed = connected && recall !== null && missing > 0;
+
+  /** 读一个整数输入；空字符串表示"不改动"，返回 null。 */
+  function intOrNull(raw: string, label: string): number | null {
+    const text = raw.trim();
+    if (text === "") return null;
+    if (!/^\d+$/.test(text)) {
+      throw new Error(`${label} 需要非负整数（收到「${text}」）`);
+    }
+    return Number(text);
+  }
+
+  function ratioOrNull(raw: string): number | null {
+    const text = raw.trim();
+    if (text === "") return null;
+    const value = Number(text);
+    if (!Number.isFinite(value) || value < 0 || value > 1) {
+      throw new Error(`分数下限需要 0 到 1 之间（收到「${text}」）`);
+    }
+    return value;
+  }
+
+  /** 把草稿里**真正改过**的项逐个提交。空字段一律跳过 —— 不猜、不写默认值。 */
+  function submit() {
+    editing.current = false;
+    const actions: RecallSettingValue[] = [];
+    try {
+      const timeout = intOrNull(draft.timeout, "超时");
+      if (timeout !== null) actions.push({ knob: "timeout", value: timeout });
+      const dedup = intOrNull(draft.dedup, "去重窗口");
+      if (dedup !== null) actions.push({ knob: "dedup", value: dedup });
+      const limit = intOrNull(draft.limit, "每轮条数");
+      if (limit !== null) actions.push({ knob: "limit", value: limit });
+      const excerpt = intOrNull(draft.excerpt, "摘录行数");
+      if (excerpt !== null) actions.push({ knob: "excerpt", value: excerpt });
+      const per = intOrNull(draft.charsPer, "单条字符预算");
+      const total = intOrNull(draft.charsTotal, "总字符预算");
+      // `chars` 上游要求两个数字一起给，所以只在两个都填了才提交。
+      if (per !== null && total !== null) actions.push({ knob: "chars", value: { perEntry: per, total } });
+      const ratio = ratioOrNull(draft.ratio);
+      if (ratio !== null) actions.push({ knob: "ratio", value: ratio });
+      actions.push({ knob: "diversity", value: draft.diversity });
+      actions.push({ knob: "display", value: draft.display });
+      for (const action of actions) onApply(action);
+    } catch (error) {
+      // 本地校验失败：不提交任何东西，让 onApply 之外的地方看到原因。
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   return (
     <section className="recall-panel">
@@ -43,7 +166,7 @@ export function RecallPanel({ recall, busy, status, onRefresh, onBuild }: Props)
         <button
           type="button"
           className="recall-refresh"
-          disabled={!connected || busy}
+          disabled={!connected || busy || restarting}
           title="重新读取 haruyuki recall status"
           onClick={onRefresh}
         >
@@ -63,8 +186,7 @@ export function RecallPanel({ recall, busy, status, onRefresh, onBuild }: Props)
           <div className="recall-line muted">{recall.indexLine || "（未报告索引状态）"}</div>
           {neverIndexed ? (
             <div className="recall-line warn">
-              ⚠️ 有 {missing} 个会话还没有索引 ——{" "}
-              <strong>这些会话的召回是静默失效的</strong>
+              ⚠️ 有 {missing} 个会话还没有索引 —— <strong>这些会话的召回是静默失效的</strong>
               （不会报错，只是永远召不回来）。点下面的按钮构建。
             </div>
           ) : null}
@@ -74,17 +196,162 @@ export function RecallPanel({ recall, busy, status, onRefresh, onBuild }: Props)
       <button
         type="button"
         className="recall-build"
-        disabled={!connected || busy}
+        disabled={!connected || busy || restarting}
         onClick={onBuild}
-        // 刻意**不在满覆盖时禁用**：上游的 status 把 ready/stale/exempt 三类加起来
-        // 算"已索引"，所以"22/22"不代表索引是新鲜的。禁用会挡住唯一的手动重建手段。
+        // 刻意**不在满覆盖时禁用**：上游把 ready/stale/exempt 三类加起来算"已索引"，
+        // 所以"22/22"不代表索引是新鲜的。禁用会挡住唯一的手动重建手段。
         title="运行 haruyuki recall build（写操作，会重建召回索引）"
       >
         {busy ? "构建中…" : "构建召回索引"}
       </button>
-      <div className="recall-line muted small">
-        build 是写操作，只在你点它时执行。已建好时重跑是幂等的。
-      </div>
+
+      {/* ---------- 设置（B1）---------- */}
+      <details className="recall-settings">
+        <summary>设置（{connected && recall?.enabled ? "已开启" : "已关闭"}）</summary>
+
+        <label className="recall-field">
+          <span>开关</span>
+          <button
+            type="button"
+            className="recall-toggle"
+            disabled={!connected || busy || restarting}
+            onClick={() => onApply({ knob: "enabled", value: !(recall?.enabled ?? false) })}
+          >
+            {recall?.enabled ? "关闭召回" : "开启召回"}
+          </button>
+        </label>
+        <div className="recall-line muted small">
+          关掉后什么都不会被检索；重新开启还会<strong>清除断路器</strong>（跳闸后唯一的人工恢复手段）。
+        </div>
+
+        <label className="recall-field">
+          <span>超时 ms</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="不改"
+            value={draft.timeout}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, timeout: e.target.value })); }}
+          />
+        </label>
+        <label className="recall-field">
+          <span>去重轮数</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="不改"
+            value={draft.dedup}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, dedup: e.target.value })); }}
+          />
+        </label>
+        <label className="recall-field">
+          <span>每轮条数</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="不改"
+            value={draft.limit}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, limit: e.target.value })); }}
+          />
+        </label>
+        <label className="recall-field">
+          <span>摘录行数</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="不改"
+            value={draft.excerpt}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, excerpt: e.target.value })); }}
+          />
+        </label>
+        <div className="recall-line muted small">{EXCERPT_LINES_UNREADABLE}</div>
+
+        <label className="recall-field">
+          <span>字符预算</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="单条"
+            value={draft.charsPer}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, charsPer: e.target.value })); }}
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="总"
+            value={draft.charsTotal}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, charsTotal: e.target.value })); }}
+          />
+        </label>
+        <div className="recall-line muted small">两个都要填才会提交（上游要求成对给出）。</div>
+
+        <label className="recall-field">
+          <span>分数下限</span>
+          <input
+            type="text"
+            placeholder="0–1"
+            value={draft.ratio}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, ratio: e.target.value })); }}
+          />
+        </label>
+        <label className="recall-field">
+          <span>多样性</span>
+          <select
+            value={draft.diversity}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, diversity: e.target.value as RecallDiversity })); }}
+          >
+            <option value="none">none</option>
+            <option value="file">file</option>
+            <option value="split">split</option>
+          </select>
+        </label>
+        <label className="recall-field">
+          <span>显示档位</span>
+          <select
+            value={draft.display}
+            disabled={!connected || busy || restarting}
+            onChange={(e) => { editing.current = true; setDraft((d) => ({ ...d, display: e.target.value as RecallDisplayTier })); }}
+          >
+            <option value="silent">silent（不显示）</option>
+            <option value="summary">summary（一行摘要）</option>
+            <option value="full">full</option>
+          </select>
+        </label>
+
+        <button type="button" className="recall-apply" disabled={!connected || busy || restarting} onClick={submit}>
+          提交改动
+        </button>
+        <div className="recall-line muted small">
+          ⚠️ 本 GUI 一律剥掉注入块（等价于 silent），所以「显示档位」只影响你自己在 TUI 里的观感。
+        </div>
+      </details>
+
+      {dirty ? (
+        <div className="recall-line warn">
+          ⚠️ 设置有改动但<strong>尚未生效</strong> —— 服务端在启动时才读一次设置。
+          <button type="button" className="recall-restart" disabled={restarting} onClick={onRestart}>
+            {restarting ? "重启中…" : "重启服务端使其生效"}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="recall-restart idle"
+          disabled={!connected || restarting}
+          title="重启 app-server（也可用于从“界面卡在正在启动”中自救）"
+          onClick={onRestart}
+        >
+          {restarting ? "重启中…" : "重启服务端"}
+        </button>
+      )}
     </section>
   );
 }
