@@ -21,6 +21,8 @@ interface Props {
   onApply: (setting: RecallSettingValue) => void;
   onRestart: () => void;
   usageTotals: UsageTotals;
+  /** recall 试搜（搜正文与记忆）。 */
+  onProbe: (query: string) => Promise<{ ok: boolean; output: string; error?: string }>;
   /** 最近一轮的用量（用于展示上下文规模）。 */
   lastUsage: UsageStats | null;
 }
@@ -87,9 +89,13 @@ export function RecallPanel({
   onRestart,
   usageTotals,
   lastUsage,
+  onProbe,
 }: Props) {
   const connected = status.state === "connected";
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [probeQuery, setProbeQuery] = useState("");
+  const [probeResult, setProbeResult] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
   /** 用户正在编辑时不要用刷新回来的值覆盖他的输入。 */
   const editing = useRef(false);
 
@@ -170,7 +176,7 @@ export function RecallPanel({
   return (
     <section className="recall-panel">
       <div className="recall-head">
-        <span>召回（recall）</span>
+        <span>全部对话搜索</span>
         <button
           type="button"
           className="recall-refresh"
@@ -200,6 +206,44 @@ export function RecallPanel({
           ) : null}
         </>
       )}
+
+      <div className="recall-line muted small">
+        搜索<b>所有会话的正文</b>与<b>记忆文件</b>（recall）。侧栏那个框只搜会话<b>标题</b>，
+        两者分工不同、都搜不到对方的东西。
+      </div>
+
+      <div className="recall-probe">
+        <input
+          type="text"
+          className="recall-probe-input"
+          value={probeQuery}
+          disabled={busy || restarting || probing}
+          placeholder="试搜正文/记忆…"
+          title="运行 haruyuki recall now <查询>，只读取结果，不会改变下一轮注入"
+          onChange={(e) => setProbeQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            setProbing(true);
+            void onProbe(probeQuery)
+              .then((r) => setProbeResult(r.ok ? r.output : `⚠️ ${r.error ?? "失败"}`))
+              .finally(() => setProbing(false));
+          }}
+        />
+        <button
+          type="button"
+          className="btn-soft"
+          disabled={busy || restarting || probing || !probeQuery.trim()}
+          onClick={() => {
+            setProbing(true);
+            void onProbe(probeQuery)
+              .then((r) => setProbeResult(r.ok ? r.output : `⚠️ ${r.error ?? "失败"}`))
+              .finally(() => setProbing(false));
+          }}
+        >
+          {probing ? "搜索中…" : "试搜"}
+        </button>
+      </div>
+      {probeResult ? <pre className="recall-probe-result">{probeResult}</pre> : null}
 
       <button
         type="button"

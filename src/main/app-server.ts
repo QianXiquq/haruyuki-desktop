@@ -506,6 +506,16 @@ export class AppServerBridge {
     return protocolVersion;
   }
 
+  /**
+   * 当前 runtime 所属的 agent id（`runtime_start` 之后就确定了）。
+   *
+   * recall 试搜必须带 `--agent`，而主进程没有渲染进程的状态 —— 这里就是权威来源，
+   * 因为它记录的是**真正恢复过的那个 runtime**。
+   */
+  currentAgentId(): string | null {
+    return this.runtime?.agent_id ?? null;
+  }
+
   get current(): AppServerClient {
     if (!this.client) throw new Error("尚未连接到 app-server");
     return this.client;
@@ -562,6 +572,26 @@ export class AppServerBridge {
     const client = this.conversationClient();
     const summaries = await fetchConversationSummaries(client, agentId);
     return attachConversationTitles(client, summaries);
+  }
+
+  /**
+   * 按标题搜会话（`conversation_list` + `summary_search`）。
+   *
+   * 服务端在 `listLocalConversations` 里按 `id` 与 `summary` 做 includes 匹配。
+   * 默认页大小 20（服务端侧），所以这里显式放大 limit —— 搜索场景下"只看到前 20 条"
+   * 比"慢一点"更糟（用户会以为没有更多）。
+   */
+  async searchConversations(agentId: string, query: string): Promise<ConversationSummary[]> {
+    if (!agentId) throw new Error("searchConversations 需要 agentId");
+    const term = query.trim();
+    if (!term) return [];
+    const response = (await this.current.request("conversation_list", {
+      query: { agent_id: agentId, summary_search: term, limit: 100 },
+    })) as unknown as { success?: boolean; conversations?: unknown[]; error?: string };
+    if (response.success === false) {
+      throw new Error(`搜索会话失败：${response.error ?? "未知原因"}`);
+    }
+    return (response.conversations ?? []).map(toConversationSummary);
   }
 
   /** 见 `fetchConversationHistory` 的说明。 */

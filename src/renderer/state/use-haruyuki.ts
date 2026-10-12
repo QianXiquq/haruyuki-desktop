@@ -102,6 +102,10 @@ export function useHaruyuki() {
   const [agentIdRef] = useState<{ current: string | null }>({ current: null });
   /** 本轮 assistant 气泡的 id；usage 帧到来时按它挂靠。 */
   const [pendingAssistantRef] = useState<{ current: string | null }>({ current: null });
+  /** 会话搜索：非空时列表显示搜索结果而不是全部。 */
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ConversationSummary[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [recall, setRecall] = useState<RecallStatusSummary | null>(null);
   const [recallBusy, setRecallBusy] = useState(false);
   /**
@@ -318,6 +322,22 @@ export function useHaruyuki() {
   }, []);
 
   /**
+   * recall 试搜：在**所有会话的正文**与**记忆文件**里搜。
+   *
+   * 与侧栏的标题搜索分工不同（标题 → `searchConversations`；正文/记忆 → 这里）。
+   * 返回上游的原文输出，由面板直接显示 —— 上游的文案里带会话 id、消息 id、时间与摘录。
+   */
+  const runRecallProbe = useCallback(
+    async (query: string): Promise<{ ok: boolean; output: string; error?: string }> => {
+      const term = query.trim();
+      if (!term) return { ok: false, output: "", error: "请输入查询词" };
+      const result = await window.haruyuki.recallProbe(term);
+      return result;
+    },
+    [],
+  );
+
+  /**
    * 构建召回索引（**写操作**，只由用户显式点击触发）。
    *
    * 为什么必须让用户能做这件事：索引为空时 recall 返回 `no-match`，走的是**正常路径**
@@ -344,6 +364,39 @@ export function useHaruyuki() {
       setRecallBusy(false);
     }
   }, [notice, recallBusy]);
+
+  /**
+   * 搜会话（服务端原生 `summary_search`）。
+   *
+   * 只搜**标题**（`summary`）—— 正文内容搜不到，那是 recall 的领域。
+   * 传空串 = 退出搜索模式，恢复显示全部会话。
+   */
+  const runSearch = useCallback(
+    async (query: string) => {
+      const term = query.trim();
+      setSearchQuery(query);
+      if (!term) {
+        setSearchResults(null);
+        return;
+      }
+      const agentId = agentIdRef.current;
+      if (!agentId) {
+        setSearchResults([]);
+        return;
+      }
+      setSearching(true);
+      try {
+        setSearchResults(await window.haruyuki.searchConversations(agentId, term));
+      } catch (error) {
+        // 搜索失败要说清，不能显示成"没有结果" —— 那会让人以为确实没有。
+        notice(`搜索会话失败：${String(error)}`, "error");
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    },
+    [agentIdRef, notice],
+  );
 
   /** 给会话改名。改完刷新列表，让标题立刻反映出来。 */
   const renameConversation = useCallback(
@@ -747,6 +800,11 @@ export function useHaruyuki() {
     refreshAgents,
     refreshConversations,
     reloadHistory,
+    searchQuery,
+    searchResults,
+    searching,
+    runSearch,
+    runRecallProbe,
     refreshRecall,
     buildRecallIndex,
     selectAgent,

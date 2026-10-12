@@ -151,6 +151,8 @@ void app.whenReady().then(() => {
       return bridge;
     },
     restartAppServer,
+    // recall 试搜要带 --agent；主进程的权威来源是 bridge 记下的那个 runtime。
+    currentAgentId: () => bridge?.currentAgentId() ?? null,
   });
 
   createWindow();

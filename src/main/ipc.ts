@@ -19,6 +19,13 @@ export interface IpcDeps {
   getBridge(): AppServerBridge;
   /** 重启 app-server（让 recall 设置生效，或从 reload 后卡死里自救）。 */
   restartAppServer(): Promise<void>;
+  /**
+   * 当前选中的 agent id。
+   *
+   * recall 试搜必须带 `--agent`（否则上游报 "needs an active agent"），
+   * 而 IPC 层拿不到渲染进程的状态，所以由主进程通过这个取值器提供。
+   */
+  currentAgentId?: () => string | null;
 }
 
 /**
@@ -35,6 +42,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       throw new Error("listConversations 的 agentId 必须是字符串");
     }
     return deps.getBridge().listConversations(agentId as string | undefined);
+  });
+
+  ipcMain.handle("haruyuki:searchConversations", (_event, agentId: unknown, query: unknown) => {
+    if (typeof agentId !== "string" || !agentId) {
+      throw new Error("searchConversations 需要 agentId");
+    }
+    if (typeof query !== "string") throw new Error("searchConversations 的 query 必须是字符串");
+    return deps.getBridge().searchConversations(agentId, query);
   });
 
   ipcMain.handle("haruyuki:loadConversation", (_event, conversationId: unknown) => {
@@ -91,6 +106,18 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   // 届时各建一个**带校验**的方法（数字范围 / 枚举在这里就挡掉）。
   ipcMain.handle("haruyuki:recallStatus", () => runRecallCommand(["status"]));
   ipcMain.handle("haruyuki:recallBuild", () => runRecallCommand(["build"]));
+  ipcMain.handle("haruyuki:recallProbe", (_event, query: unknown) => {
+    if (typeof query !== "string") throw new Error("recallProbe 的 query 必须是字符串");
+    const term = query.trim();
+    if (!term) throw new Error("recallProbe 需要非空查询");
+    // ⚠️ 查询词若以 `-` 开头，上游的参数解析会把它当**选项**而不是查询词。
+    // 我们不做"聪明"的转义，直接拒绝并说清 —— 比让上游给出费解的报错好。
+    if (term.startsWith("-")) {
+      throw new Error("查询词不能以 `-` 开头（会被上游当成命令行选项）");
+    }
+    if (term.length > 500) throw new Error("查询词过长（上限 500 字符）");
+    return runRecallCommand(["now", term, "--agent", deps.currentAgentId?.() ?? ""]);
+  });
 
   ipcMain.handle("haruyuki:recallSet", (_event, setting: unknown) => {
     // `toRecallArgs` 会在**spawn 之前**校验并抛错 —— 非法值根本到不了上游，

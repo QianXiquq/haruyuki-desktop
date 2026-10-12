@@ -72,6 +72,11 @@ export function App() {
     setPermissionMode,
     restoreLastConversation,
     reloadHistory,
+    searchQuery,
+    searchResults,
+    searching,
+    runSearch,
+    runRecallProbe,
     refreshRecall,
     buildRecallIndex,
     models,
@@ -183,6 +188,10 @@ export function App() {
             disabled={status.state !== "connected"}
             onSelect={(id) => void onSelectConversation(id)}
             onRename={renameConversation}
+            query={searchQuery}
+            searching={searching}
+            results={searchResults}
+            onQueryChange={(q) => void runSearch(q)}
           />
 
           <div className="sidebar-panels">
@@ -198,6 +207,7 @@ export function App() {
               onBuild={() => void buildRecallIndex()}
               onApply={(setting) => void applyRecallSetting(setting)}
               onRestart={() => void restartServer()}
+            onProbe={runRecallProbe}
             />
           </div>
         </aside>

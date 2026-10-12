@@ -14,6 +14,10 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:listConversations", agentId) as ReturnType<
       HaruyukiApi["listConversations"]
     >,
+  searchConversations: (agentId, query) =>
+    ipcRenderer.invoke("haruyuki:searchConversations", agentId, query) as ReturnType<
+      HaruyukiApi["searchConversations"]
+    >,
   loadConversation: (conversationId) =>
     ipcRenderer.invoke("haruyuki:loadConversation", conversationId) as ReturnType<
       HaruyukiApi["loadConversation"]
@@ -30,6 +34,8 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallStatus") as ReturnType<HaruyukiApi["recallStatus"]>,
   recallBuild: () =>
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
+  recallProbe: (query) =>
+    ipcRenderer.invoke("haruyuki:recallProbe", query) as ReturnType<HaruyukiApi["recallProbe"]>,
   recallSet: (setting) =>
     ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
   listMemory: (agentId) =>

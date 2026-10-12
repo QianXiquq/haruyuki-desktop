@@ -491,6 +491,19 @@ export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
   listAgents(): Promise<AgentSummary[]>;
   listConversations(agentId?: string): Promise<ConversationSummary[]>;
+  /**
+   * 按**标题**搜会话（服务端原生过滤，`summary_search`）。
+   *
+   * ⚠️ 这里是**而非**"拉全量再本地筛"：服务端支持参数化过滤，本地筛会在会话多时退化。
+   *
+   * ⚠️ 搜的是 **`summary`，也就是"自定义标题"** —— 服务端匹配 `id` 与 `summary`
+   * 两个字段（`local-conversation-list.ts`）。所以：
+   * - 想搜到，**得先给会话改名**（P1 第 3 项做的就是这件事）
+   * - **正文内容搜不到** —— 那是 recall 的领域（`recall now` 走 transcript 索引）
+   *
+   * 只返回匹配项，不做标题补全（那是逐会话再请求，对搜索结果没必要）。
+   */
+  searchConversations(agentId: string, query: string): Promise<ConversationSummary[]>;
   loadConversation(conversationId: string): Promise<ConversationHistory>;
   startRuntime(
     agentId: string,
@@ -507,6 +520,18 @@ export interface HaruyukiApi {
    * 显式点击触发，绝不自动执行 —— 索引为空会让 recall 静默失效。
    */
   recallBuild(): Promise<RecallCommandResult>;
+  /**
+   * recall 试搜（spawn `haruyuki recall now <query>`）：在**所有会话的正文**与
+   * **记忆文件**里搜，返回命中的片段（带会话 id / 消息 id / 时间）。
+   *
+   * 与 `searchConversations` 的分工必须说清楚，否则用户会以为其中一个坏了：
+   * - `searchConversations` → 只搜**会话标题**（`summary`）
+   * - `recallProbe` → 搜**正文与记忆**（transcript + memory 索引）
+   *
+   * ⚠️ 它**不是精确匹配**，是相关性检索（有分数下限），所以搜不到某个确切字串是正常的。
+   * ⚠️ 会带 `--agent`：不带的话上游报 "A recall probe needs an active agent"（实测）。
+   */
+  recallProbe(query: string): Promise<RecallCommandResult>;
   /**
    * 改一个 recall 设置。**越界的值会被主进程直接拒绝、不会 spawn**（上游还有第二道校验）。
    *

@@ -8,6 +8,13 @@ interface Props {
   onSelect: (conversationId: string) => void;
   /** 改名。传空字符串 = 清除自定义标题（退回自动推导）。 */
   onRename: (conversationId: string, summary: string) => Promise<void>;
+  /** 搜索关键词（受控）。空串 = 非搜索模式。 */
+  query: string;
+  /** 搜索中。 */
+  searching: boolean;
+  /** 当前显示的搜索结果；null = 非搜索模式（显示全部）。 */
+  results: ConversationSummary[] | null;
+  onQueryChange: (query: string) => void;
 }
 
 /**
@@ -37,7 +44,17 @@ function timeOf(conversation: ConversationSummary): string {
   });
 }
 
-export function ConversationList({ conversations, activeId, disabled, onSelect, onRename }: Props) {
+export function ConversationList({
+  conversations,
+  activeId,
+  disabled,
+  onSelect,
+  onRename,
+  query,
+  searching,
+  results,
+  onQueryChange,
+}: Props) {
   /** 正在改名的那条。改名是**逐条**的，所以只需要一个 id。 */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -63,12 +80,38 @@ export function ConversationList({ conversations, activeId, disabled, onSelect, 
     }
   }
 
+  /** 搜索模式下显示结果，否则显示全部。 */
+  const shown = results ?? conversations;
+  const searchMode = results !== null;
+
   return (
     <div className="conversation-list">
-        {conversations.length === 0 ? (
+        <div className="conversation-search">
+          <input
+            type="text"
+            className="conversation-search-input"
+            value={query}
+            disabled={disabled}
+            placeholder="搜索会话标题…"
+            title="按会话标题搜索（服务端 summary_search）。只能搜到设置了自定义标题的会话 —— 用行尾的 ✎ 改名。正文内容请用左侧「召回」里的 recall 试搜。"
+            onChange={(e) => onQueryChange(e.target.value)}
+          />
+          {query ? (
+            <button type="button" className="conversation-search-clear" onClick={() => onQueryChange("")}>
+              ✕
+            </button>
+          ) : null}
+        </div>
+        {searchMode ? (
+          <div className="conversation-search-note">
+            {searching ? "搜索中…" : `找到 ${shown.length} 个会话`}
+            {!searching && shown.length === 0 ? " —— 只能搜到有自定义标题的会话" : ""}
+          </div>
+        ) : null}
+        {shown.length === 0 && !searchMode ? (
           <div className="sidebar-empty">{disabled ? "等待连接…" : "还没有会话"}</div>
         ) : null}
-        {conversations.map((conversation) => {
+        {shown.map((conversation) => {
           const active = conversation.id === activeId;
           if (editingId === conversation.id) {
             return (

@@ -22,7 +22,8 @@
     "check:model": "bun scripts/model-check.ts",
     "check:rename": "bun scripts/rename-check.ts",
     "check:agent": "bun scripts/agent-check.ts",
-    "check:memory": "bun scripts/memory-check.ts"
+    "check:memory": "bun scripts/memory-check.ts",
+    "check:search": "bun scripts/search-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
