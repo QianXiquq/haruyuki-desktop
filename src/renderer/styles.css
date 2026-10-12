@@ -191,3 +191,95 @@ button.interrupt:disabled { color: var(--muted-dim); border-color: var(--border-
 .statusbar-dot-error, .statusbar-dot-disconnected { background: var(--err); }
 .statusbar-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .statusbar-warn { margin-left: auto; color: var(--warn); white-space: nowrap; }
+
+/* ============================================================
+   按钮体系
+   ------------------------------------------------------------
+   旧版有一条 `button { background: var(--accent) }` 的通用规则，于是**每个没有
+   自己样式的按钮**都渲染成蓝色实心块 + 深色文字 —— 与新配色完全不搭（截图里很明显）。
+   现在改成：**基础样式是低调的 ghost**，需要强调的地方显式加 `.btn-soft`。
+   这样"忘了写样式"的默认结果也是协调的，而不是醒目又难看。
+   ============================================================ */
+button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; color: var(--muted);
+  border: 1px solid transparent; border-radius: 8px;
+  padding: 6px 10px; font: inherit; font-size: 12px; font-weight: 500; line-height: 1.2;
+  cursor: pointer; white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+button:hover:not(:disabled) { background: var(--panel-strong); color: var(--fg); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button:disabled { color: var(--muted-dim); background: transparent; cursor: not-allowed; opacity: 0.6; }
+
+/* 有底色的次要按钮 */
+button.btn-soft { background: var(--panel); color: var(--fg); border-color: var(--border); }
+button.btn-soft:hover:not(:disabled) { background: var(--panel-strong); }
+button.btn-soft:disabled { background: transparent; border-color: var(--border-soft); }
+
+/* 强调按钮 */
+button.btn-accent { background: var(--accent); color: #fff; border-color: transparent; }
+button.btn-accent:hover:not(:disabled) { background: #5b89f8; color: #fff; }
+button.btn-accent:disabled { background: var(--panel); color: var(--muted-dim); }
+
+/* 危险/警示 */
+button.btn-danger { color: var(--err); }
+button.btn-danger:hover:not(:disabled) { background: #2a1e22; color: var(--err); }
+
+/* 下拉框：去掉系统默认外观，与按钮同一套圆角与配色 */
+select, .mode-select, .agent-picker select, .recall-field select {
+  appearance: none; -webkit-appearance: none;
+  background-color: var(--panel);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238e8ea0' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+  color: var(--fg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 26px 6px 10px; font: inherit; font-size: 12px; cursor: pointer;
+}
+select:hover:not(:disabled) { background-color: var(--panel-strong); }
+select:disabled { color: var(--muted-dim); cursor: not-allowed; opacity: 0.6; }
+
+/* ---- 具体按钮：统一到上面的体系 ---- */
+.new-conversation {
+  width: 100%; background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; font-size: 13px;
+}
+.new-conversation:hover:not(:disabled) { background: var(--panel-strong); }
+.new-conversation .plus { color: var(--muted); font-size: 13px; }
+button.ghost, .cwd-go, .cwd-cancel, .cwd-up, .recall-refresh { border-color: var(--border); }
+button.ghost:hover:not(:disabled), .cwd-go:hover:not(:disabled),
+.cwd-up:hover:not(:disabled), .recall-refresh:hover:not(:disabled) { background: var(--panel); }
+.recall-apply { background: var(--accent); color: #fff; border-color: transparent; width: 100%; padding: 7px 10px; }
+.recall-apply:hover:not(:disabled) { background: #5b89f8; color: #fff; }
+.recall-apply:disabled { background: var(--panel); color: var(--muted-dim); }
+.recall-restart { color: var(--warn); }
+.recall-restart:hover:not(:disabled) { background: #2a2418; color: var(--warn); }
+.recall-restart.idle { width: 100%; color: var(--muted); border-color: var(--border); }
+.recall-restart.idle:hover:not(:disabled) { color: var(--fg); }
+.cwd-cancel { color: var(--muted-dim); }
+.cwd-folder { background: var(--panel); color: var(--fg); border-color: var(--border); padding: 3px 8px; font-size: 11px; }
+.cwd-folder:hover:not(:disabled) { background: var(--panel-strong); }
+.cwd-value {
+  background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 9px; font-weight: 400;
+}
+.cwd-value:hover:not(:disabled) { background: var(--panel-strong); color: var(--fg); }
+button.send { border-radius: 50%; width: 30px; height: 30px; padding: 0; font-size: 13px; }
+button.send:hover:not(:disabled) { background: #5b89f8; }
+button.interrupt:hover:not(:disabled) { background: #2a2418; }
+.approval-actions .allow { background: var(--ok); color: #0b1a0d; border-color: transparent; padding: 7px 16px; }
+.approval-actions .allow:hover:not(:disabled) { background: #5fd98c; color: #0b1a0d; }
+.approval-actions .deny { background: transparent; color: var(--err); border-color: var(--err); padding: 7px 16px; }
+.approval-actions .deny:hover:not(:disabled) { background: #2a1e22; color: var(--err); }
+
+/* 目录编辑器打开时别把顶栏挤到换行：限制整体宽度，输入框可横向滚动看全路径。 */
+.cwd-editor { max-width: 520px; }
+.cwd-input { min-width: 0; }
+
+/* 会话列表的横向溢出修复。
+   实测：list.scrollWidth 299 > clientWidth 267 —— 长标题把列表撑宽，
+   于是整列可以横向滚动、左侧文字被推出视口（截图里看到的"少了一截"就是这个）。
+   根因是 flex 子项默认 min-width:auto，`text-overflow: ellipsis` 因此不生效。 */
+.conversation-list { overflow-x: hidden; }
+.conversation { min-width: 0; max-width: 100%; overflow: hidden; }
+.conversation-title, .conversation-meta { min-width: 0; max-width: 100%; overflow: hidden; }
