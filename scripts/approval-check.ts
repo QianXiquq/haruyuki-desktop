@@ -8,16 +8,18 @@ import WebSocket from "ws";
 import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
+import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
 
-process.env.HARUYUKI_SERVER_CMD ??=
-  `node ${process.env.HARUYUKI_REPO ?? "/Users/qianxiquq/haruyuki"}/haruyuki.js server`;
+
+const SERVER_CMD = resolveCheckServerCommand();
+console.log("服务端产物:", describeCheckServer(SERVER_CMD));
 
 const events: HaruyukiEvent[] = [];
 const seenFrameTypes = new Set<string>();
 const seenMessageTypes = new Set<string>();
 let autoApproved = 0;
 
-const server = await startServer();
+const server = await startServer({ command: SERVER_CMD });
 console.log("① 服务端:", server.wsUrl);
 
 const rawClient = { current: null as unknown as { onMessage: (h: (m: unknown) => void) => void } };

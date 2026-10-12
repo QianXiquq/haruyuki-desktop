@@ -142,6 +142,10 @@ export function useHaruyuki() {
               });
           }
           return;
+        case "notice":
+          // 服务端的信息性提示（0.2.0 的 recall 降级/超时走这条）。不是错误，但要可见。
+          setItems((prev) => [...prev, { id: uid(), kind: "notice", text: event.text }]);
+          return;
         case "error":
           setItems((prev) => [...prev, { id: uid(), kind: "notice", text: `错误：${event.message}` }]);
           setBusy(false);

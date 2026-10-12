@@ -17,9 +17,8 @@ import WebSocket from "ws";
 import { AppServerBridge, deriveConversationTitle, toChatItems, toChatItemsWithDate } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
+import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
 
-process.env.HARUYUKI_SERVER_CMD ??=
-  `node ${process.env.HARUYUKI_REPO ?? "/Users/qianxiquq/haruyuki"}/haruyuki.js server`;
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
 function check(label: string, ok: boolean, detail?: string): void {
@@ -27,8 +26,11 @@ function check(label: string, ok: boolean, detail?: string): void {
   console.log(`${ok ? "✅" : "❌"} ${label}${detail ? ` —— ${detail}` : ""}`);
 }
 
+const SERVER_CMD = resolveCheckServerCommand();
+console.log("服务端产物:", describeCheckServer(SERVER_CMD));
+
 const events: HaruyukiEvent[] = [];
-const server = await startServer();
+const server = await startServer({ command: SERVER_CMD });
 console.log("① 服务端已启动:", server.wsUrl);
 
 const bridge = new AppServerBridge((event) => events.push(event));
@@ -155,6 +157,52 @@ check(
   "toChatItems 把 desc 输入反转成 旧→新",
   syntheticItems[0]?.kind === "user" && syntheticItems[1]?.kind === "assistant",
   syntheticItems.map((i) => i.kind).join(","),
+);
+
+// 0.2.0 的 recall 块也是一个 <system-reminder>：必须整块剥掉，只留真实用户文字。
+// 这是刻意与 CLI 不同的取舍（CLI 保留它是为了渲染 `↩ recalled` 摘要行）——
+// 见 src/main/app-server.ts 里 stripSystemReminders 的注释。
+const recallOnly = toChatItems([
+  {
+    id: "rc1",
+    message_type: "user_message",
+    date: "2026-01-01T00:00:01.000Z",
+    content: [
+      {
+        type: "text",
+        text:
+          '<system-reminder>\n<recall-injected items="2" transcript="1" memory="1" />\n' +
+          "earlier conversation excerpt…\n</system-reminder>",
+      },
+    ],
+  },
+]);
+check(
+  "整条都是 recall 块的 user 消息被丢弃（不会渲染成空气泡）",
+  recallOnly.length === 0,
+  `${recallOnly.length} 条`,
+);
+
+const recallMixed = toChatItems([
+  {
+    id: "rc2",
+    message_type: "user_message",
+    date: "2026-01-01T00:00:01.000Z",
+    content: [
+      {
+        type: "text",
+        text:
+          '<system-reminder>\n<recall-injected items="1" transcript="1" memory="0" />\n' +
+          "old passage\n</system-reminder>",
+      },
+      { type: "text", text: "真正的用户问题" },
+    ],
+  },
+]);
+check(
+  "recall 块被剥掉、真实用户文字保留",
+  recallMixed.length === 1 && recallMixed[0]?.kind === "user" && recallMixed[0].text === "真正的用户问题",
+  JSON.stringify(recallMixed.map((i) => (i.kind === "user" ? i.text : i.kind))),
 );
 
 // tool_return 回填：用一条 approval_request + 对应 tool_return 验证

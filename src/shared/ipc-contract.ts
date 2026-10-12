@@ -9,6 +9,18 @@ export interface ServerStatus {
   state: ServerState;
   wsUrl?: string;
   protocolVersion?: number;
+  /**
+   * 服务端自报的 haruyuki 版本（`app_server_info_response.letta_code_version`）。
+   *
+   * ⚠️ 字段名里带 `letta` 是**上游协议既有命名**（`@letta-ai/letta-client` 是其类型
+   * 依赖），不是品牌资产 —— 不要改名也不要删。
+   *
+   * 没有它就无法分辨对面跑的是 0.1.3 还是 0.2.0：**两个版本的
+   * `APP_SERVER_PROTOCOL_VERSION` 都是 1**，光看 `protocol v1` 完全一样。
+   */
+  haruyukiVersion?: string;
+  /** 服务端自报的后端类型（local / api）。 */
+  backend?: string;
   error?: string;
 }
 
@@ -75,6 +87,11 @@ export type HaruyukiEvent =
   | { kind: "turn_finished"; stopReason?: string }
   | { kind: "loop_status"; status: string }
   | { kind: "queue"; pending: number }
+  /**
+   * 服务端的信息性提示（`stream_delta` 里的 `status` 消息）。
+   * haruyuki 0.2.0 的 recall 降级/超时就是走这条。
+   */
+  | { kind: "notice"; text: string }
   | { kind: "error"; message: string };
 
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */

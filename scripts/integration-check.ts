@@ -10,14 +10,14 @@ import WebSocket from "ws";
 import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
+import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
 
-// 默认指向本地源码仓的构建产物。注意 HARUYUKI_SERVER_CMD 是**完整命令行**，
-// 必须自带 `server` 子命令 —— 少了它 haruyuki 会去启动 TUI 并立刻退出。
-process.env.HARUYUKI_SERVER_CMD ??=
-  `node ${process.env.HARUYUKI_REPO ?? "/Users/qianxiquq/haruyuki"}/haruyuki.js server`;
+
+const SERVER_CMD = resolveCheckServerCommand();
+console.log("服务端产物:", describeCheckServer(SERVER_CMD));
 
 const events: HaruyukiEvent[] = [];
-const server = await startServer();
+const server = await startServer({ command: SERVER_CMD });
 console.log("① 服务端已启动:", server.wsUrl);
 
 const bridge = new AppServerBridge((event) => {

@@ -54,6 +54,16 @@ function asRecord(value: unknown): Record<string, unknown> {
  * **不是用户说的话**。实测每轮 user 消息都被塞好几条，原样渲染会让历史里
  * 第一屏全是噪音。这里与服务端 `src/cli/helpers/conversation-title.ts` 的
  * `stripSystemReminders` 保持同样的语义。
+ *
+ * ⚠️ **与 CLI 的一处刻意差异**：haruyuki 0.2.0 起，被动召回（recall）的片段也是
+ * 一个 `<system-reminder>` 块（标记行 `<recall-injected items=… />`）。CLI 的
+ * `removeSystemContextBlocks` **刻意保留**这一块，好让显示层渲染出 `↩ recalled`
+ * 摘要行；我们这里**一律剥掉**，等价于把 `recallDisplay` 固定成 `silent`。
+ *
+ * 这样取舍的理由：那些片段是**几千字的原文**，我们的气泡是纯文本、没有折叠语义，
+ * 原样塞进用户气泡会把历史读成一片噪音。代价是界面上看不到"这轮召回了什么"——
+ * 想要的话，去 TUI 里 `/recall display summary` 看，或者等 GUI 做召回面板
+ * 。
  */
 const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 
@@ -365,9 +375,24 @@ export class AppServerBridge {
     });
 
     await client.connect();
-    const info = (await client.info()) as unknown as { protocol_version?: number };
+    const info = (await client.info()) as unknown as {
+      protocol_version?: number;
+      letta_code_version?: string;
+      backend?: string;
+    };
     const protocolVersion = Number(info.protocol_version ?? 0);
-    this.emit({ kind: "status", status: { state: "connected", wsUrl, protocolVersion } });
+    const haruyukiVersion = str(info.letta_code_version);
+    const backend = str(info.backend);
+    this.emit({
+      kind: "status",
+      status: {
+        state: "connected",
+        wsUrl,
+        protocolVersion,
+        ...(haruyukiVersion ? { haruyukiVersion } : {}),
+        ...(backend ? { backend } : {}),
+      },
+    });
     return protocolVersion;
   }
 
@@ -591,6 +616,15 @@ export class AppServerBridge {
       case "loop_error":
         this.emit({ kind: "error", message: str(delta.message) || "回合出错" });
         return;
+      // haruyuki 0.2.0 起，recall（被动召回）降级 / 超时 / 断路器跳闸会以
+      // `status` 消息到达（服务端 `emitRecoverableStatusNotice` → `emitStatusDelta`）。
+      // 不接的话，用户只会看到"这一轮没带上召回内容"而不知道原因。
+      // 0.1.3 也会发 status（如 stale_approval_conflict_recovery），只是都被丢了。
+      case "status": {
+        const text = str(delta.message);
+        if (text) this.emit({ kind: "notice", text });
+        return;
+      }
       default:
         return;
     }

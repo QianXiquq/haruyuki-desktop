@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
@@ -9,14 +10,34 @@ import { join } from "node:path";
  *   1. HARUYUKI_SERVER_CMD —— 完整命令行，空格分隔，**须自带 `server` 子命令**
  *      （最高优先级，便于测试与自定义构建）
  *   2. HARUYUKI_BIN       —— 可执行文件或 .js 路径
- *   3. 本地源码仓的构建产物（开发期默认；仅当文件确实存在）
- *   4. 自带 node_modules/.bin/haruyuki
+ *   3. HARUYUKI_REPO      —— 源码仓目录，取其构建产物 `<dir>/haruyuki.js`
+ *   4. 上游参考仓的构建产物（开发期默认；仅当文件确实存在）
+ *   5. 自带 node_modules/.bin/haruyuki
+ *
+ * 关于第 4 条：开发期默认指向 **上游 TZYLT 的 0.2.0 参考仓**，
+ * 而不是任何 fork。`haruyuki.js` 是 gitignore 的构建产物，所以这个文件存不存在
+ * 直接决定开发期能不能跑起来；不存在时会自然落到第 5 条。
  */
-const DEV_REPO_BUILD = "/Users/qianxiquq/haruyuki/haruyuki.js";
+const UPSTREAM_REFERENCE_REPO = join(homedir(), "haruyuki-upstream");
+
+function builtArtifactOf(repoDir: string): string {
+  return join(repoDir, "haruyuki.js");
+}
 
 export interface ServerCommand {
   command: string;
   args: string[];
+}
+
+/** 开发期默认的服务端构建产物；都不存在时返回 null。 */
+export function defaultServerBuild(): string | null {
+  const fromEnv = process.env.HARUYUKI_REPO;
+  if (fromEnv && fromEnv.trim()) {
+    const artifact = builtArtifactOf(fromEnv.trim());
+    if (existsSync(artifact)) return artifact;
+  }
+  const upstream = builtArtifactOf(UPSTREAM_REFERENCE_REPO);
+  return existsSync(upstream) ? upstream : null;
 }
 
 export function resolveServerCommand(): ServerCommand {
@@ -33,8 +54,9 @@ export function resolveServerCommand(): ServerCommand {
       : { command: explicit, args: ["server"] };
   }
 
-  if (existsSync(DEV_REPO_BUILD)) {
-    return { command: process.execPath, args: [DEV_REPO_BUILD, "server"] };
+  const devBuild = defaultServerBuild();
+  if (devBuild) {
+    return { command: process.execPath, args: [devBuild, "server"] };
   }
 
   return {
@@ -55,8 +77,23 @@ export interface StartedServer {
  * 传裸 `--listen`，服务端会自己挑一个可用的 loopback 端口，避免端口冲突；
  * 真实 URL 从 stdout 的 `WebSocket: ws://…` 行解析。
  */
-export function startServer(timeoutMs = 20_000): Promise<StartedServer> {
-  const { command, args } = resolveServerCommand();
+export interface StartServerOptions {
+  /** 等待"监听地址"上报的上限。 */
+  timeoutMs?: number;
+  /**
+   * 覆盖要启动的命令。自测脚本用它来**钉死**测的是哪一个构建产物，
+   * 避免"以为测了 0.2.0、实际测的是旧 checkout"。
+   */
+  command?: ServerCommand;
+}
+
+export function startServer(
+  timeoutMsOrOptions: number | StartServerOptions = 20_000,
+): Promise<StartedServer> {
+  const options: StartServerOptions =
+    typeof timeoutMsOrOptions === "number" ? { timeoutMs: timeoutMsOrOptions } : timeoutMsOrOptions;
+  const timeoutMs = options.timeoutMs ?? 20_000;
+  const { command, args } = options.command ?? resolveServerCommand();
   const child = spawn(command, [...args, "--listen"], {
     stdio: ["ignore", "pipe", "pipe"],
     // ⚠️ 在 Electron 里 process.execPath 是 **Electron 自己**，不是 node。

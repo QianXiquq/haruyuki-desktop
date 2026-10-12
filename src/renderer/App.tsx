@@ -113,7 +113,10 @@ export function App() {
         <div className="brand">Haruyuki Desktop</div>
         <div className={`status status-${status.state}`}>
           {STATE_LABEL[status.state] ?? status.state}
+          {/* 版本必须显示：0.1.3 与 0.2.0 的 protocol_version 都是 1，光看协议版本分辨不出来 */}
+          {status.haruyukiVersion ? ` · haruyuki v${status.haruyukiVersion}` : ""}
           {status.protocolVersion ? ` · protocol v${status.protocolVersion}` : ""}
+          {status.backend ? ` · ${status.backend}` : ""}
           {status.wsUrl ? ` · ${status.wsUrl}` : ""}
           {status.error ? ` · ${status.error}` : ""}
         </div>
