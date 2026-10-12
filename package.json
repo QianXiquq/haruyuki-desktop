@@ -17,7 +17,8 @@
     "vendor:sync": "node scripts/materialize-vendor.mjs",
     "check:approval": "bun scripts/approval-check.ts",
     "check:usage": "bun scripts/usage-check.ts",
-    "check:cwd": "bun scripts/cwd-check.ts"
+    "check:cwd": "bun scripts/cwd-check.ts",
+    "check:layout": "electron scripts/layout-check.cjs"
   },
   "dependencies": {
     "react": "^19.3.0",
