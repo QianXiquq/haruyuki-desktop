@@ -18,7 +18,9 @@
     "check:approval": "bun scripts/approval-check.ts",
     "check:usage": "bun scripts/usage-check.ts",
     "check:cwd": "bun scripts/cwd-check.ts",
-    "check:layout": "electron scripts/layout-check.cjs"
+    "check:layout": "electron scripts/layout-check.cjs",
+    "check:model": "bun scripts/model-check.ts",
+    "check:rename": "bun scripts/rename-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

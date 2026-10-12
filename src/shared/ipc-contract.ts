@@ -38,15 +38,23 @@ export interface RuntimeScope {
 /**
  * `conversation_list_response` 里的一项（实测字段）。
  *
- * ⚠️ 服务端**不提供标题**，`summary` 实测恒为 `null`。列表标题由渲染进程
- * 从首条真实用户消息里推导（见 `ConversationList`）。
+ * ⚠️ 服务端**不提供"名字"字段** —— 标题的**首选来源是 `summary`**（会话改名就是改它，
+ * 服务端搜索会话时也匹配它），但它默认是 `null`。为 null 时由主进程从首条真实用户
+ * 消息里推导（见 `deriveConversationTitle`）。
  */
 export interface ConversationSummary {
   id: string;
   agentId: string;
   /**
-   * 列表标题。**服务端不提供**（`summary` 实测恒为 null），由主进程从该会话最早的
-   * 一条真实用户消息推导；推不出来（空会话 / 拉取失败）时为 undefined。
+   * 自定义标题（服务端的 `summary` 字段）。
+   *
+   * 改名就是设置它；为空表示没有自定义标题，界面回退到 `title`（自动推导）。
+   * 它同时是**服务端搜索会话时会匹配的内容**。
+   */
+  summary?: string;
+  /**
+   * **自动推导**的标题：主进程从该会话最早的一条真实用户消息得出。
+   * 推不出来（空会话 / 拉取失败）时为 undefined。仅在 `summary` 为空时使用。
    */
   title?: string;
   createdAt?: string;
@@ -413,6 +421,37 @@ export interface StatusSummary {
   recallMissing: number;
 }
 
+/**
+ * 可选模型的一项（来自 `list_models`）。
+ *
+ * ⚠️ 实测：`entries` 里**一个模型会出现多次**，`id` 编码了"模型 + 推理档位"，
+ * `handle` 才是模型本身。例如 deepseek 返回 7 条：
+ *
+ * ```
+ * id=deepseek-flash-none  handle=deepseek/deepseek-flash  label=DeepSeek V4.1 Flash
+ * id=deepseek-flash-low   handle=deepseek/deepseek-flash  label=DeepSeek V4.1 Flash
+ * id=deepseek-flash-high  handle=deepseek/deepseek-flash  label=DeepSeek V4.1 Flash
+ * id=deepseek-flash-max   handle=deepseek/deepseek-flash  label=DeepSeek V4.1 Flash
+ * ```
+ *
+ * 所以**别用 `label` 或 `handle` 当选项的键** —— 会重复、选错。用 `id`。
+ * 界面上也要把档位显示出来（`label` 是四条一模一样的），否则用户分不清。
+ */
+export interface ModelOption {
+  id: string;
+  handle: string;
+  label: string;
+  /** 从 `id` 尾部解析出来的推理档位，例如 `none` / `low` / `high` / `max`；解析不出则缺省。 */
+  effort?: string;
+}
+
+/** `list_models` + `update_model` 的结果。 */
+export interface ModelCatalog {
+  options: ModelOption[];
+  /** 服务端报的可用 handle（`available_handles`）。 */
+  availableHandles: string[];
+}
+
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
@@ -441,6 +480,30 @@ export interface HaruyukiApi {
    * 调 `restartServer()` 换一个进程。调用方要负责把这个前提告诉用户。
    */
   recallSet(setting: RecallSettingValue): Promise<RecallCommandResult>;
+  /**
+   * 给会话改名（`conversation_update { summary }`）。
+   *
+   * ⚠️ 改的是 **`summary`** 字段，不是某个 name —— 服务端没有会话名字段。
+   * 而 `summary` 恰好是：① 我们界面标题的**首选来源**（`ConversationList` 优先用它，
+   * 为空才回退到"从最早的真实用户发言推导"）；② 服务端**搜索会话时会匹配它**
+   * （`local-conversation-list.ts` 里对 `conversation.summary` 做 includes）。
+   * 所以改它就同时获得了"可读标题"和"可被搜到"。
+   *
+   * 传空字符串 = 清除自定义标题，界面会退回自动推导。
+   */
+  renameConversation(conversationId: string, summary: string): Promise<void>;
+  /** 列出可选模型（`list_models`）。 */
+  listModels(): Promise<ModelCatalog>;
+  /**
+   * 切换当前会话的模型（`update_model`）。
+   *
+   * `modelId` 必须是 `listModels()` 返回的 `id`（它编码了模型与推理档位）。
+   * ⚠️ 当前生效的模型**协议读不出来**（`conversation_retrieve` 里没有任何 model 字段，
+   * 实测为空），所以界面只能显示"本次运行内我们设过的那个"，重启后回到未知。
+   *
+   * @returns 服务端实际应用的 `{ modelId, modelHandle, appliedTo }`。
+   */
+  setModel(modelId: string): Promise<{ modelId?: string; modelHandle?: string; appliedTo?: string }>;
   /** 读当前会话的工作目录（`get_cwd_map`）。 */
   getWorkingDirectory(): Promise<WorkingDirectorySummary | null>;
   /**

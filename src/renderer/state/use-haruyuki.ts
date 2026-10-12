@@ -5,6 +5,7 @@ import type {
   ConversationSummary,
   HaruyukiApi,
   PermissionMode,
+  ModelCatalog,
   RecallSettingValue,
   RecallStatusSummary,
   RuntimeScope,
@@ -118,6 +119,14 @@ export function useHaruyuki() {
    * 涉及文件的任务因此全是盲操作。
    */
   const [cwd, setCwd] = useState<WorkingDirectorySummary | null>(null);
+  const [models, setModels] = useState<ModelCatalog | null>(null);
+  /**
+   * 当前生效的模型 id。
+   *
+   * ⚠️ 协议**读不到**当前模型（`conversation_retrieve` 里没有 model 字段），
+   * 所以这个值只反映"本次运行内我们设过的那个"，重启后回到 null（界面显示"未知"）。
+   */
+  const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   /** 有设置改动尚未通过重启生效 —— 界面要一直挂着提示，直到重启完成。 */
   const [recallDirty, setRecallDirty] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -331,6 +340,36 @@ export function useHaruyuki() {
     }
   }, [notice, recallBusy]);
 
+  /** 给会话改名。改完刷新列表，让标题立刻反映出来。 */
+  const renameConversation = useCallback(
+    async (conversationId: string, summary: string) => {
+      await window.haruyuki.renameConversation(conversationId, summary.trim());
+      const agentId = agentIdRef.current;
+      if (agentId) await refreshConversations(agentId);
+      notice(summary.trim() ? "会话已改名" : "已清除自定义标题");
+    },
+    [agentIdRef, notice, refreshConversations],
+  );
+
+  /** 拉一次模型目录（失败只在面板上体现，不打断对话）。 */
+  const refreshModels = useCallback(async () => {
+    try {
+      setModels(await window.haruyuki.listModels());
+    } catch {
+      setModels(null);
+    }
+  }, []);
+
+  /** 切换模型。失败会抛给界面（guard 之外，由调用方处理）。 */
+  const changeModel = useCallback(
+    async (modelId: string) => {
+      const applied = await window.haruyuki.setModel(modelId);
+      setCurrentModelId(applied.modelId ?? modelId);
+      notice(`模型已切换为 ${applied.modelHandle ?? applied.modelId ?? modelId}`);
+    },
+    [notice],
+  );
+
   /** 读当前会话的工作目录。失败只记一行，不打断对话（它不是核心链路）。 */
   const refreshWorkingDirectory = useCallback(async () => {
     try {
@@ -469,6 +508,8 @@ export function useHaruyuki() {
 
         // 每个会话有自己的工作目录（服务端按会话存），所以切换会话必须重读。
         await refreshWorkingDirectory();
+        // 模型是本会话级的；目录拉一次即可（失败不阻断）。
+        await refreshModels();
 
         // 会话的 last_message_at 会变，列表要在进入后重新排一次。
         try {
@@ -478,7 +519,7 @@ export function useHaruyuki() {
         }
       });
     },
-    [activeIdRef, fetchHistory, guard, refreshConversations, refreshWorkingDirectory],
+    [activeIdRef, fetchHistory, guard, refreshConversations, refreshModels, refreshWorkingDirectory],
   );
 
   /** 切换 agent：总是开一个新会话（旧会话仍留在列表里，随时可回去）。 */
@@ -591,6 +632,11 @@ export function useHaruyuki() {
     usageTotals,
     lastUsage,
     cwd,
+    models,
+    currentModelId,
+    renameConversation,
+    refreshModels,
+    changeModel,
     refreshWorkingDirectory,
     changeWorkingDirectory,
     listDirectory,

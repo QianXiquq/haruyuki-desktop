@@ -3,6 +3,7 @@ import { AgentPicker } from "./components/AgentPicker";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
+import { ModelPicker } from "./components/ModelPicker";
 import { RecallPanel } from "./components/RecallPanel";
 import { StatusBar } from "./components/StatusBar";
 import { WorkingDirectory } from "./components/WorkingDirectory";
@@ -72,6 +73,10 @@ export function App() {
     reloadHistory,
     refreshRecall,
     buildRecallIndex,
+    models,
+    currentModelId,
+    changeModel,
+    renameConversation,
     changeWorkingDirectory,
     listDirectory,
     send,
@@ -157,6 +162,7 @@ export function App() {
             activeId={activeConversationId}
             disabled={status.state !== "connected"}
             onSelect={(id) => void onSelectConversation(id)}
+            onRename={renameConversation}
           />
 
           <div className="sidebar-panels">
@@ -192,6 +198,13 @@ export function App() {
               onList={listDirectory}
             />
             <div className="topbar-actions">
+              <ModelPicker
+                catalog={models}
+                currentId={currentModelId}
+                disabled={status.state !== "connected"}
+                busy={busy}
+                onSelect={(id) => void changeModel(id)}
+              />
               <select
                 className="mode-select"
                 value={mode}

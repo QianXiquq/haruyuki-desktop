@@ -292,3 +292,25 @@ button.interrupt:hover:not(:disabled) { background: #2a2418; }
 .conversation-list { overflow-x: hidden; }
 .conversation { flex: 0 0 auto; min-width: 0; max-width: 100%; overflow: hidden; }
 .conversation-title, .conversation-meta { min-width: 0; max-width: 100%; overflow: hidden; }
+
+/* 模型选择器：与 agent/权限下拉同一套外观 */
+.model-select { max-width: 220px; }
+
+/* 会话改名：hover 出现铅笔，点开变输入框 */
+.conversation-row { position: relative; display: flex; align-items: stretch; }
+.conversation-row .conversation { flex: 1; min-width: 0; }
+.conversation-row .rename-trigger {
+  position: absolute; right: 4px; top: 6px;
+  opacity: 0; color: var(--muted-dim); padding: 2px 6px; font-size: 12px;
+  background: var(--panel-strong); border-radius: 6px;
+}
+.conversation-row:hover .rename-trigger, .conversation-row .rename-trigger:focus-visible { opacity: 1; }
+.conversation-row .rename-trigger:hover:not(:disabled) { color: var(--fg); }
+.conversation-rename { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--panel); border-radius: 8px; }
+.rename-input {
+  width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px;
+}
+.rename-actions { display: flex; gap: 6px; }
+.rename-actions button { padding: 4px 10px; }
+.rename-error { color: var(--err); font-size: 11px; }

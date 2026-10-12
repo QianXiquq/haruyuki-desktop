@@ -8,6 +8,7 @@ import type {
   HaruyukiEvent,
   PermissionMode,
   DirectoryListing,
+  ModelCatalog,
   RuntimeScope,
   UsageStats,
   WorkingDirectorySummary,
@@ -208,6 +209,7 @@ function toConversationSummary(raw: unknown): ConversationSummary {
   return {
     id: str(conversation.id),
     agentId: str(conversation.agent_id),
+    ...(str(conversation.summary) ? { summary: str(conversation.summary) } : {}),
     messageCount: Array.isArray(conversation.in_context_message_ids)
       ? conversation.in_context_message_ids.length
       : 0,
@@ -552,6 +554,84 @@ export class AppServerBridge {
   /** 原始消息帧，仅供自测验证排序用。 */
   async rawConversationMessages(conversationId: string): Promise<unknown[]> {
     return fetchConversationMessages(this.conversationClient(), conversationId);
+  }
+
+  /** 给会话改名（见 `HarukiApi.renameConversation` 的说明：改的是 `summary`）。 */
+  async renameConversation(conversationId: string, summary: string): Promise<void> {
+    if (!conversationId) throw new Error("renameConversation 需要 conversationId");
+    const response = (await this.current.request("conversation_update", {
+      conversation_id: conversationId,
+      body: { summary },
+    })) as unknown as { success?: boolean; error?: string };
+    if (response.success === false) {
+      throw new Error(`会话改名失败：${response.error ?? "未知原因"}`);
+    }
+  }
+
+  /** 列出可选模型（`list_models`）。 */
+  async listModels(): Promise<ModelCatalog> {
+    const response = (await this.current.request("list_models", {})) as unknown as {
+      success?: boolean;
+      entries?: unknown[];
+      available_handles?: unknown;
+      error?: string;
+    };
+    if (response.success === false) {
+      throw new Error(`list_models 失败：${response.error ?? "未知原因"}`);
+    }
+    const options = (response.entries ?? []).map((raw) => {
+      const entry = asRecord(raw);
+      const id = str(entry.id);
+      const handle = str(entry.handle);
+      const label = str(entry.label) || handle || id;
+      // `id` 形如 `<model>-<effort>`，尾部即推理档位；取不到就不显示档位。
+      const effortMatch = /-(none|minimal|low|medium|high|xhigh|max)$/.exec(id);
+      return {
+        id,
+        handle,
+        label,
+        ...(effortMatch?.[1] ? { effort: effortMatch[1] } : {}),
+      };
+    });
+    return {
+      options,
+      availableHandles: Array.isArray(response.available_handles)
+        ? response.available_handles.map((h) => str(h))
+        : [],
+    };
+  }
+
+  /**
+   * 切换当前会话的模型。
+   *
+   * 用 `model_id`（`list_models` 的 `id`）而不是 `model_handle` —— `id` 同时编码
+   * **模型与推理档位**，而同一个 handle 有多个档位（实测 deepseek-flash 有
+   * none/low/high/max 四条）。只传 handle 会丢掉档位。
+   */
+  async setModel(
+    modelId: string,
+  ): Promise<{ modelId?: string; modelHandle?: string; appliedTo?: string }> {
+    const runtime = this.requireRuntime();
+    const wanted = modelId.trim();
+    if (!wanted) throw new Error("modelId 不能为空");
+    const response = (await this.current.request("update_model", {
+      runtime,
+      payload: { model_id: wanted },
+    })) as unknown as {
+      success?: boolean;
+      applied_to?: string;
+      model_id?: string;
+      model_handle?: string;
+      error?: string;
+    };
+    if (response.success === false) {
+      throw new Error(`切换模型失败：${response.error ?? "未知原因"}`);
+    }
+    return {
+      ...(response.model_id ? { modelId: response.model_id } : {}),
+      ...(response.model_handle ? { modelHandle: response.model_handle } : {}),
+      ...(response.applied_to ? { appliedTo: response.applied_to } : {}),
+    };
   }
 
   /**

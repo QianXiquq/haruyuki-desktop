@@ -99,6 +99,27 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return runRecallCommand(args);
   });
 
+  // ---- 会话改名（conversation_update { summary }）----
+  ipcMain.handle("haruyuki:renameConversation", (_event, conversationId: unknown, summary: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("renameConversation 需要非空的 conversationId");
+    }
+    if (typeof summary !== "string") {
+      throw new Error("renameConversation 的 summary 必须是字符串（空串表示清除自定义标题）");
+    }
+    return deps.getBridge().renameConversation(conversationId, summary);
+  });
+
+  // ---- 模型（list_models / update_model）----
+  ipcMain.handle("haruyuki:listModels", () => deps.getBridge().listModels());
+  ipcMain.handle("haruyuki:setModel", (_event, modelId: unknown) => {
+    // 只接受字符串 id；具体是否为合法模型由服务端裁定（它会回 error）。
+    if (typeof modelId !== "string" || !modelId.trim()) {
+      throw new Error("setModel 需要非空的 modelId");
+    }
+    return deps.getBridge().setModel(modelId);
+  });
+
   // ---- 工作目录（cwd）----
   //
   // `setWorkingDirectory` 走 `input` + `payload.cwd`（与权限模式同一条通道），

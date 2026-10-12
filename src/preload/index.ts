@@ -32,6 +32,13 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
   recallSet: (setting) =>
     ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
+  renameConversation: (conversationId, summary) =>
+    ipcRenderer.invoke("haruyuki:renameConversation", conversationId, summary) as ReturnType<
+      HaruyukiApi["renameConversation"]
+    >,
+  listModels: () => ipcRenderer.invoke("haruyuki:listModels") as ReturnType<HaruyukiApi["listModels"]>,
+  setModel: (modelId) =>
+    ipcRenderer.invoke("haruyuki:setModel", modelId) as ReturnType<HaruyukiApi["setModel"]>,
   getWorkingDirectory: () =>
     ipcRenderer.invoke("haruyuki:getWorkingDirectory") as ReturnType<
       HaruyukiApi["getWorkingDirectory"]

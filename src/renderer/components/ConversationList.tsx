@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ConversationSummary } from "@/shared/ipc-contract";
 
 interface Props {
@@ -5,6 +6,8 @@ interface Props {
   activeId: string | null;
   disabled: boolean;
   onSelect: (conversationId: string) => void;
+  /** 改名。传空字符串 = 清除自定义标题（退回自动推导）。 */
+  onRename: (conversationId: string, summary: string) => Promise<void>;
 }
 
 /**
@@ -15,6 +18,8 @@ interface Props {
  * 否则会谎称一个装满消息的会话是"空"。
  */
 function labelOf(conversation: ConversationSummary): string {
+  // 自定义标题（summary）优先 —— 那是用户自己写的。
+  if (conversation.summary) return conversation.summary;
   if (conversation.title) return conversation.title;
   return conversation.messageCount === 0 ? "（空会话）" : "（无标题）";
 }
@@ -32,7 +37,32 @@ function timeOf(conversation: ConversationSummary): string {
   });
 }
 
-export function ConversationList({ conversations, activeId, disabled, onSelect }: Props) {
+export function ConversationList({ conversations, activeId, disabled, onSelect, onRename }: Props) {
+  /** 正在改名的那条。改名是**逐条**的，所以只需要一个 id。 */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /** 去掉 Electron 给 IPC 错误加的 `Error invoking remote method '…'` 包装。 */
+  function clean(e: unknown): string {
+    const raw = e instanceof Error ? e.message : String(e);
+    return raw.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, "").trim() || raw;
+  }
+
+  async function submitRename(conversationId: string): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await onRename(conversationId, draft);
+      setEditingId(null);
+    } catch (e) {
+      setError(clean(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="conversation-list">
         {conversations.length === 0 ? (
@@ -40,21 +70,64 @@ export function ConversationList({ conversations, activeId, disabled, onSelect }
         ) : null}
         {conversations.map((conversation) => {
           const active = conversation.id === activeId;
+          if (editingId === conversation.id) {
+            return (
+              <div key={conversation.id} className="conversation-rename">
+                <input
+                  type="text"
+                  className="rename-input"
+                  autoFocus
+                  value={draft}
+                  disabled={busy}
+                  placeholder="自定义标题（留空 = 清除）"
+                  title="改的是会话的 summary 字段：它既是界面标题，也是服务端搜索会话时会匹配的内容"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitRename(conversation.id);
+                    if (e.key === "Escape") { setEditingId(null); setError(null); }
+                  }}
+                />
+                <div className="rename-actions">
+                  <button type="button" className="btn-soft" disabled={busy} onClick={() => void submitRename(conversation.id)}>
+                    {busy ? "…" : "保存"}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => { setEditingId(null); setError(null); }}>
+                    取消
+                  </button>
+                </div>
+                {error ? <div className="rename-error">⚠️ {error}</div> : null}
+              </div>
+            );
+          }
           return (
-            <button
-              type="button"
-              key={conversation.id}
-              className={`conversation${active ? " active" : ""}`}
-              disabled={disabled}
-              title={`${conversation.id} · ${conversation.messageCount} 条消息`}
-              onClick={() => onSelect(conversation.id)}
-            >
-              <span className="conversation-title">{labelOf(conversation)}</span>
-              <span className="conversation-meta">
-                {timeOf(conversation)}
-                {conversation.messageCount > 0 ? ` · ${conversation.messageCount} 条` : ""}
-              </span>
-            </button>
+            <div key={conversation.id} className={`conversation-row${active ? " active" : ""}`}>
+              <button
+                type="button"
+                className={`conversation${active ? " active" : ""}`}
+                disabled={disabled}
+                title={`${conversation.id} · ${conversation.messageCount} 条消息`}
+                onClick={() => onSelect(conversation.id)}
+              >
+                <span className="conversation-title">{labelOf(conversation)}</span>
+                <span className="conversation-meta">
+                  {timeOf(conversation)}
+                  {conversation.messageCount > 0 ? ` · ${conversation.messageCount} 条` : ""}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="rename-trigger"
+                disabled={disabled}
+                title={conversation.summary ? `改名（当前自定义标题：${conversation.summary}）` : "给这个会话起个名字"}
+                onClick={() => {
+                  setDraft(conversation.summary ?? "");
+                  setError(null);
+                  setEditingId(conversation.id);
+                }}
+              >
+                ✎
+              </button>
+            </div>
           );
         })}
     </div>
