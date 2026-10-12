@@ -73,7 +73,14 @@ export type ChatItem =
   | { id: string; kind: "assistant"; text: string }
   | { id: string; kind: "reasoning"; text: string }
   | { id: string; kind: "tool_call"; name: string; input: unknown; done: boolean; output?: string }
-  | { id: string; kind: "notice"; text: string };
+  /**
+   * 界面上的提示条目。
+   *
+   * ⚠️ `level` 不能省：这个组件历史上**只有红底**的配色（那是给错误用的），
+   * 于是一条"召回索引已构建：…"的**成功**提示也长成报错的样子（实测截图里看到）。
+   * 默认 `info`（中性），只有真正的失败才是 `error`。
+   */
+  | { id: string; kind: "notice"; text: string; level?: "info" | "error" };
 
 export type HaruyukiEvent =
   | { kind: "status"; status: ServerStatus }
@@ -94,6 +101,57 @@ export type HaruyukiEvent =
   | { kind: "notice"; text: string }
   | { kind: "error"; message: string };
 
+/**
+ * `haruyuki recall …` 子命令的输出。
+ *
+ * 上游有 `haruyuki recall <build|status|now|on|off|…>` 这个**不依赖 TUI 的顶层子命令**
+ * （源码原话："任何其它 `/recall` 子命令在这里也能用，所以脚本可以设置旋钮"），
+ * GUI 就是 spawn 它、把 stdout 拿回来显示。
+ */
+export interface RecallCommandResult {
+  /** 命令是否成功（退出码 0）。失败时也返回，但 `ok === false` 且带 `error`。 */
+  ok: boolean;
+  /** 命令的完整输出（stdout + stderr 合并）。**界面直接显示这段原文**。 */
+  output: string;
+  /** 失败原因（超时 / 非零退出码）。成功时为 undefined。 */
+  error?: string;
+}
+
+/** 从 `recall status` 的输出里解析出来的结构化信息（界面用，失败时为 null）。 */
+export interface RecallStatusSummary {
+  enabled: boolean;
+  /** 索引覆盖率描述，例如 `22/22 conversations indexed · 59 records`。 */
+  indexLine: string;
+  /** 有多少会话**还没有**索引（>0 意味着 recall 处于静默失效状态）。 */
+  missing: number;
+  /** 原始输出，供界面原样展示 —— 解析失败时也不至于什么都看不到。 */
+  raw: string;
+}
+
+/**
+ * 解析 `haruyuki recall status` 的输出。
+ *
+ * 放在 `shared/` 而不是主进程的 `recall.ts`，是因为渲染进程也要用它 ——
+ * 而 `recall.ts` import 了 `node:child_process`，被渲染进程 import 会污染浏览器 bundle。
+ *
+ * **刻意写得宽容**：解析不出来不是错误。上游换个措辞就会解析失败，那时界面仍要把
+ * `raw` 原样显示，绝不能因为"解析失败"就让用户什么都看不到。所以这里**不抛异常**，
+ * 最坏情况只是 `missing` 拿不到。
+ */
+export function parseRecallStatus(output: string): RecallStatusSummary {
+  const lines = output.split("\n");
+  const indexLine = lines.find((line) => line.startsWith("Index:")) ?? "";
+  const recallLine = lines.find((line) => line.startsWith("Recall:")) ?? "";
+  // `Index: 0/22 conversations indexed · 0 records · 22 without an index`
+  const missingMatch = /(\d+)\s+without an index/.exec(indexLine);
+  return {
+    enabled: /Recall:\s*on\b/.test(recallLine),
+    indexLine: indexLine.replace(/^Index:\s*/, "").trim(),
+    missing: missingMatch?.[1] ? Number(missingMatch[1]) : 0,
+    raw: output,
+  };
+}
+
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
@@ -108,6 +166,13 @@ export interface HaruyukiApi {
   sendMessage(text: string): Promise<void>;
   respondApproval(requestId: string, decision: "allow" | "deny"): Promise<void>;
   interrupt(): Promise<void>;
+  /** 读 recall 状态（spawn `haruyuki recall status`）。只读，不改任何状态。 */
+  recallStatus(): Promise<RecallCommandResult>;
+  /**
+   * 构建召回索引（spawn `haruyuki recall build`）。**这是写操作**，只会由用户
+   * 显式点击触发，绝不自动执行 —— 索引为空会让 recall 静默失效。
+   */
+  recallBuild(): Promise<RecallCommandResult>;
   onStatus(handler: (status: ServerStatus) => void): () => void;
   onEvent(handler: (event: HaruyukiEvent) => void): () => void;
 }

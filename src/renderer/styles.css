@@ -80,6 +80,29 @@ body {
 .conversation-meta { color: var(--muted); font-size: 11px; }
 
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* 右侧面板列（B0：recall） */
+.side-panels {
+  width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--panel); border-left: 1px solid var(--border);
+  padding: 10px; overflow-y: auto; min-height: 0;
+}
+.recall-panel { display: flex; flex-direction: column; gap: 8px; }
+.recall-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--muted); font-size: 12px; letter-spacing: 0.04em;
+}
+.recall-head .recall-refresh {
+  background: #2a3040; color: var(--fg); padding: 3px 8px; font-size: 11px; font-weight: 500;
+}
+.recall-line { font-size: 12px; line-height: 1.5; word-break: break-word; }
+.recall-line.muted { color: var(--muted); }
+.recall-line.small { font-size: 11px; }
+.recall-line.warn {
+  color: var(--warn); background: #26221a; border: 1px solid var(--warn);
+  border-radius: 6px; padding: 6px 8px;
+}
+.recall-build { background: #2a3040; color: var(--fg); font-weight: 500; font-size: 12px; padding: 6px 10px; }
 .chat-head {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 16px; border-bottom: 1px solid var(--border);
@@ -99,7 +122,9 @@ body {
 .msg.reasoning { background: #1a1d23; color: var(--muted); }
 .msg.reasoning summary { cursor: pointer; }
 .msg.tool { background: #191d24; border-color: #33405a; }
-.msg.notice { background: #2a1e22; border-color: var(--err); color: var(--err); }
+/* 中性提示（默认）。历史包袱：这里原先只有"错误"那一种配色，于是成功提示也长成报错样。 */
+.msg.notice { background: #1e2430; border-color: #33405a; color: var(--fg); }
+.msg.notice-error { background: #2a1e22; border-color: var(--err); color: var(--err); }
 .tool-name { color: var(--accent); font-weight: 600; margin-bottom: 6px; }
 .msg pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; color: var(--muted); }
 .tool-output { color: var(--fg); }

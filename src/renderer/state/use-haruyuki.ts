@@ -5,9 +5,11 @@ import type {
   ConversationSummary,
   HaruyukiApi,
   PermissionMode,
+  RecallStatusSummary,
   RuntimeScope,
   ServerStatus,
 } from "@/shared/ipc-contract";
+import { parseRecallStatus } from "@/shared/ipc-contract";
 
 declare global {
   interface Window {
@@ -87,6 +89,8 @@ export function useHaruyuki() {
   const [activeIdRef] = useState<{ current: string | null }>({ current: null });
   /** 当前选中的 agent id，同上。 */
   const [agentIdRef] = useState<{ current: string | null }>({ current: null });
+  const [recall, setRecall] = useState<RecallStatusSummary | null>(null);
+  const [recallBusy, setRecallBusy] = useState(false);
 
   useEffect(() => {
     const offStatus = window.haruyuki.onStatus(setStatus);
@@ -147,7 +151,10 @@ export function useHaruyuki() {
           setItems((prev) => [...prev, { id: uid(), kind: "notice", text: event.text }]);
           return;
         case "error":
-          setItems((prev) => [...prev, { id: uid(), kind: "notice", text: `错误：${event.message}` }]);
+          setItems((prev) => [
+            ...prev,
+            { id: uid(), kind: "notice", text: `错误：${event.message}`, level: "error" },
+          ]);
           setBusy(false);
           return;
         default:
@@ -167,12 +174,15 @@ export function useHaruyuki() {
       await fn();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setItems((prev) => [...prev, { id: uid(), kind: "notice", text: `${label}失败：${message}` }]);
+      setItems((prev) => [
+        ...prev,
+        { id: uid(), kind: "notice", text: `${label}失败：${message}`, level: "error" },
+      ]);
     }
   }, []);
 
-  const notice = useCallback((text: string) => {
-    setItems((prev) => [...prev, { id: uid(), kind: "notice", text }]);
+  const notice = useCallback((text: string, level: "info" | "error" = "info") => {
+    setItems((prev) => [...prev, { id: uid(), kind: "notice", text, level }]);
   }, []);
 
   const refreshAgents = useCallback(async () => {
@@ -181,7 +191,7 @@ export function useHaruyuki() {
     } catch (error) {
       setItems((prev) => [
         ...prev,
-        { id: uid(), kind: "notice", text: `无法列出 agent：${String(error)}` },
+        { id: uid(), kind: "notice", text: `无法列出 agent：${String(error)}`, level: "error" },
       ]);
     }
   }, []);
@@ -226,6 +236,50 @@ export function useHaruyuki() {
     if (!conversationId) return;
     await guard("重新加载历史", () => fetchHistory(conversationId));
   }, [activeIdRef, fetchHistory, guard]);
+
+  /**
+   * 读 recall 状态（只读）。
+   *
+   * recall 在协议层没有任何命令，所以这里走 `haruyuki recall status` 子进程。
+   * 失败**不弹错** —— recall 不是核心功能，服务端没装好时不该让界面炸掉；
+   * 只在面板上留一行说明。
+   */
+  const refreshRecall = useCallback(async () => {
+    try {
+      const result = await window.haruyuki.recallStatus();
+      setRecall(result.ok ? parseRecallStatus(result.output) : null);
+    } catch {
+      setRecall(null);
+    }
+  }, []);
+
+  /**
+   * 构建召回索引（**写操作**，只由用户显式点击触发）。
+   *
+   * 为什么必须让用户能做这件事：索引为空时 recall 返回 `no-match`，走的是**正常路径**
+   * 而**不是** degraded，因此**不发任何通知** —— 表现为 agent 莫名答不上以前聊过的事，
+   * 没有任何线索。上游唯一的自救办法 `haruyuki recall build` 是 TUI 命令，
+   * GUI 用户没有它就永远好不了。
+   */
+  const buildRecallIndex = useCallback(async () => {
+    if (recallBusy) return;
+    setRecallBusy(true);
+    try {
+      const result = await window.haruyuki.recallBuild();
+      // 结果原样落进对话流：上游的文案比我们转述的更有用（含索引了多少会话）。
+      if (result.ok) {
+        notice(`召回索引已构建：${result.output.split("\n")[0] ?? ""}`);
+      } else {
+        notice(`构建召回索引失败：${result.error ?? "未知原因"}`, "error");
+      }
+      const after = await window.haruyuki.recallStatus();
+      setRecall(after.ok ? parseRecallStatus(after.output) : null);
+    } catch (error) {
+      notice(`构建召回索引失败：${String(error)}`, "error");
+    } finally {
+      setRecallBusy(false);
+    }
+  }, [notice, recallBusy]);
 
   /**
    * 唯一的"进入某个会话"入口。
@@ -373,9 +427,13 @@ export function useHaruyuki() {
     conversations,
     activeConversationId,
     loadingHistory,
+    recall,
+    recallBusy,
     refreshAgents,
     refreshConversations,
     reloadHistory,
+    refreshRecall,
+    buildRecallIndex,
     selectAgent,
     openConversation,
     newConversation,

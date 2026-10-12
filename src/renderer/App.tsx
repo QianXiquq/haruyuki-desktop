@@ -3,6 +3,7 @@ import { AgentPicker } from "./components/AgentPicker";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
+import { RecallPanel } from "./components/RecallPanel";
 import type { PermissionMode } from "@/shared/ipc-contract";
 import { useHaruyuki } from "./state/use-haruyuki";
 
@@ -31,6 +32,8 @@ export function App() {
     conversations,
     activeConversationId,
     loadingHistory,
+    recall,
+    recallBusy,
     refreshAgents,
     selectAgent,
     openConversation,
@@ -38,6 +41,8 @@ export function App() {
     setPermissionMode,
     restoreLastConversation,
     reloadHistory,
+    refreshRecall,
+    buildRecallIndex,
     send,
     respond,
     interrupt,
@@ -152,6 +157,16 @@ export function App() {
           onSelect={(id) => void onSelectConversation(id)}
           onCreate={() => void onCreateConversation()}
         />
+
+        <aside className="side-panels">
+          <RecallPanel
+            recall={recall}
+            busy={recallBusy}
+            status={status}
+            onRefresh={() => void refreshRecall()}
+            onBuild={() => void buildRecallIndex()}
+          />
+        </aside>
 
         <main className="chat">
           <div className="chat-head">

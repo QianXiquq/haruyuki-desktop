@@ -41,27 +41,44 @@ export function defaultServerBuild(): string | null {
 }
 
 export function resolveServerCommand(): ServerCommand {
+  const launcher = resolveHaruyukiLauncher();
+  return { command: launcher.command, args: [...launcher.args, "server"] };
+}
+
+/**
+ * 解析"如何调用 haruyuki 本体"，**不含子命令**。
+ *
+ * `resolveServerCommand()` 与 recall 的 spawn（`src/main/recall.ts`）共用这一份 ——
+ * 否则会出现"能连上服务端、却找不到同一个二进制去跑 `haruyuki recall`"的割裂。
+ *
+ * ⚠️ 返回的 `args` 是**前缀**（例如 `["/path/haruyuki.js"]`），调用方自己接子命令，
+ * 即 `[...args, "recall", "status"]`。
+ */
+export function resolveHaruyukiLauncher(): ServerCommand {
   const full = process.env.HARUYUKI_SERVER_CMD;
   if (full && full.trim()) {
-    const [command, ...args] = full.trim().split(/\s+/);
-    return { command: command as string, args };
+    const [command, ...rest] = full.trim().split(/\s+/);
+    // HARUYUKI_SERVER_CMD 是**完整命令行**（含 `server` 子命令），
+    // 这里要把子命令剥掉，只留"怎么启动 haruyuki"这一层。
+    const isServerTail = rest[rest.length - 1] === "server";
+    return { command: command as string, args: isServerTail ? rest.slice(0, -1) : rest };
   }
 
   const explicit = process.env.HARUYUKI_BIN;
   if (explicit && explicit.trim()) {
     return /\.(js|cjs|mjs)$/.test(explicit)
-      ? { command: process.execPath, args: [explicit, "server"] }
-      : { command: explicit, args: ["server"] };
+      ? { command: process.execPath, args: [explicit] }
+      : { command: explicit, args: [] };
   }
 
   const devBuild = defaultServerBuild();
   if (devBuild) {
-    return { command: process.execPath, args: [devBuild, "server"] };
+    return { command: process.execPath, args: [devBuild] };
   }
 
   return {
     command: join(process.cwd(), "node_modules", ".bin", "haruyuki"),
-    args: ["server"],
+    args: [],
   };
 }
 

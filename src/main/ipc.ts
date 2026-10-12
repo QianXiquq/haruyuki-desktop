@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import type { PermissionMode, ServerStatus } from "@/shared/ipc-contract";
 import type { AppServerBridge } from "./app-server";
+import { runRecallCommand } from "./recall";
 
 const PERMISSION_MODES: readonly PermissionMode[] = [
   "standard",
@@ -75,4 +76,13 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
 
   ipcMain.handle("haruyuki:interrupt", () => deps.getBridge().interrupt());
+
+  // ---- recall（走 `haruyuki recall …` CLI 子命令，见 src/main/recall.ts）----
+  //
+  // ⚠️ 刻意**不暴露任意 argv**，只开这两个动作、参数由主进程写死。
+  // 理由与本文件既有的白名单风格一致：参数合法性有两道防线（这里 + 上游 CLI），
+  // 而不是把渲染进程传来的数组原样转发。设置类的那 10 个旋钮留到 B1，
+  // 届时各建一个**带校验**的方法（数字范围 / 枚举在这里就挡掉）。
+  ipcMain.handle("haruyuki:recallStatus", () => runRecallCommand(["status"]));
+  ipcMain.handle("haruyuki:recallBuild", () => runRecallCommand(["build"]));
 }

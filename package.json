@@ -13,6 +13,7 @@
     "postinstall": "node scripts/materialize-vendor.mjs",
     "check:integration": "bun scripts/integration-check.ts",
     "check:conversations": "bun scripts/conversation-check.ts",
+    "check:recall": "bun scripts/recall-check.ts",
     "vendor:sync": "node scripts/materialize-vendor.mjs",
     "check:approval": "bun scripts/approval-check.ts"
   },

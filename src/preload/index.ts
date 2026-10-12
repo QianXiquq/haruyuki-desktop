@@ -26,6 +26,10 @@ const api: HaruyukiApi = {
   respondApproval: (requestId, decision) =>
     ipcRenderer.invoke("haruyuki:respondApproval", requestId, decision) as Promise<void>,
   interrupt: () => ipcRenderer.invoke("haruyuki:interrupt") as Promise<void>,
+  recallStatus: () =>
+    ipcRenderer.invoke("haruyuki:recallStatus") as ReturnType<HaruyukiApi["recallStatus"]>,
+  recallBuild: () =>
+    ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
   onStatus: (handler) => subscribe<ServerStatus>("haruyuki:status", handler),
   onEvent: (handler) => subscribe<HaruyukiEvent>("haruyuki:event", handler),
 };

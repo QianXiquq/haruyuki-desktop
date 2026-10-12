@@ -25,7 +25,7 @@ function renderItem(item: ChatItem) {
         </div>
       );
     case "notice":
-      return <div className="msg notice">{item.text}</div>;
+      return <div className={`msg notice${item.level === "error" ? " notice-error" : ""}`}>{item.text}</div>;
     default:
       return null;
   }
