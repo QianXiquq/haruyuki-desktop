@@ -351,6 +351,23 @@ export function useHaruyuki() {
     [agentIdRef, notice, refreshConversations],
   );
 
+  /**
+   * 新建 agent，并把列表刷新出来。
+   *
+   * @returns 新 agent 的 id —— 调用方用它立刻切过去（否则界面还停在旧 agent 上，
+   * 用户会以为没建成）。
+   */
+  const createAgent = useCallback(
+    async (name: string): Promise<string> => {
+      const created = await window.haruyuki.createAgent(name);
+      await refreshAgents();
+      // 提示由调用方在**切换会话之后**发出 —— 开新会话会清空消息列表，
+      // 在这里报会被立刻清掉（实测丢过一次）。
+      return created.id;
+    },
+    [notice, refreshAgents],
+  );
+
   /** 拉一次模型目录（失败只在面板上体现，不打断对话）。 */
   const refreshModels = useCallback(async () => {
     try {
@@ -635,6 +652,9 @@ export function useHaruyuki() {
     models,
     currentModelId,
     renameConversation,
+    createAgent,
+    /** 往消息流里放一条中性提示（供调用方在合适时机使用）。 */
+    notify: (text: string) => notice(text),
     refreshModels,
     changeModel,
     refreshWorkingDirectory,

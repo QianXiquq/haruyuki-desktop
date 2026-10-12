@@ -314,3 +314,11 @@ button.interrupt:hover:not(:disabled) { background: #2a2418; }
 .rename-actions { display: flex; gap: 6px; }
 .rename-actions button { padding: 4px 10px; }
 .rename-error { color: var(--err); font-size: 11px; }
+
+/* 新建 agent 的内联编辑器（与顶栏其它控件同一套外观） */
+.agent-create { display: flex; align-items: center; gap: 6px; }
+.agent-create-input {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 12px; width: 180px;
+}
+.agent-create-error { color: var(--err); font-size: 11px; }

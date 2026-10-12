@@ -481,6 +481,18 @@ export interface HaruyukiApi {
    */
   recallSet(setting: RecallSettingValue): Promise<RecallCommandResult>;
   /**
+   * 新建 agent（`agent_create`）。
+   *
+   * 实测：**只给 `name` 就够了** —— `AgentCreateParams` 全部字段可选，服务端会补上
+   * 默认模型（本机实测得到 `deepseek/deepseek-v4-pro`）与默认工具集。
+   *
+   * 只收 `name` 是**刻意的范围限制**：模型、系统提示、工具集这些配置项数量很大，
+   * 一个表单放不下，也不该在这轮硬塞进来。需要更多配置时，去 TUI 的 `/agents`。
+   *
+   * @returns 新 agent（供界面立刻选中）。
+   */
+  createAgent(name: string): Promise<AgentSummary>;
+  /**
    * 给会话改名（`conversation_update { summary }`）。
    *
    * ⚠️ 改的是 **`summary`** 字段，不是某个 name —— 服务端没有会话名字段。

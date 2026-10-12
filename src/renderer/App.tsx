@@ -77,6 +77,8 @@ export function App() {
     currentModelId,
     changeModel,
     renameConversation,
+    createAgent,
+    notify,
     changeWorkingDirectory,
     listDirectory,
     send,
@@ -221,8 +223,16 @@ export function App() {
               <AgentPicker
                 agents={agents}
                 selectedId={selectedId}
-                onSelect={(id) => void onSelectAgent(id)}
                 disabled={status.state !== "connected"}
+                onSelect={(id) => void onSelectAgent(id)}
+                onCreate={async (name) => {
+                  // ⚠️ 顺序要紧：**先切过去再报**。
+                  // 切到新 agent 会开一个新会话，而开新会话会清空消息列表 ——
+                  // 如果先报再切，那条"已新建 agent"的提示会被一起清掉（实测丢过一次）。
+                  const id = await createAgent(name);
+                  await onSelectAgent(id);
+                  notify(`已新建 agent「${name}」（模型使用服务端默认）`);
+                }}
               />
               <button
                 type="button"

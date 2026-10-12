@@ -556,6 +556,26 @@ export class AppServerBridge {
     return fetchConversationMessages(this.conversationClient(), conversationId);
   }
 
+  /** 新建 agent（只给 name；见 `HaruyukiApi.createAgent` 的范围说明）。 */
+  async createAgent(name: string): Promise<AgentSummary> {
+    const wanted = name.trim();
+    if (!wanted) throw new Error("agent 名称不能为空");
+    const response = (await this.current.request("agent_create", {
+      body: { name: wanted },
+    })) as unknown as { success?: boolean; agent?: unknown; error?: string };
+    if (response.success === false) {
+      throw new Error(`新建 agent 失败：${response.error ?? "未知原因"}`);
+    }
+    const agent = asRecord(response.agent);
+    const id = str(agent.id);
+    if (!id) throw new Error("新建 agent 成功但回执里没有 id");
+    return {
+      id,
+      ...(str(agent.name) ? { name: str(agent.name) } : {}),
+      ...(str(agent.description) ? { description: str(agent.description) } : {}),
+    };
+  }
+
   /** 给会话改名（见 `HarukiApi.renameConversation` 的说明：改的是 `summary`）。 */
   async renameConversation(conversationId: string, summary: string): Promise<void> {
     if (!conversationId) throw new Error("renameConversation 需要 conversationId");

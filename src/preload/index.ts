@@ -32,6 +32,8 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
   recallSet: (setting) =>
     ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
+  createAgent: (name) =>
+    ipcRenderer.invoke("haruyuki:createAgent", name) as ReturnType<HaruyukiApi["createAgent"]>,
   renameConversation: (conversationId, summary) =>
     ipcRenderer.invoke("haruyuki:renameConversation", conversationId, summary) as ReturnType<
       HaruyukiApi["renameConversation"]

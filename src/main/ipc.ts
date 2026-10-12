@@ -99,6 +99,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return runRecallCommand(args);
   });
 
+  // ---- 新建 agent ----
+  ipcMain.handle("haruyuki:createAgent", (_event, name: unknown) => {
+    if (typeof name !== "string" || !name.trim()) {
+      throw new Error("createAgent 需要非空名称");
+    }
+    return deps.getBridge().createAgent(name);
+  });
+
   // ---- 会话改名（conversation_update { summary }）----
   ipcMain.handle("haruyuki:renameConversation", (_event, conversationId: unknown, summary: unknown) => {
     if (typeof conversationId !== "string" || !conversationId) {
