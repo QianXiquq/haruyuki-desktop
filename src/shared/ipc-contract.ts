@@ -99,6 +99,8 @@ export type HaruyukiEvent =
    * haruyuki 0.2.0 的 recall 降级/超时就是走这条。
    */
   | { kind: "notice"; text: string }
+  /** 一轮的用量（服务端实测 token 数；**没有成本字段**，见 UsageStats 的说明）。 */
+  | { kind: "usage"; usage: UsageStats }
   | { kind: "error"; message: string };
 
 /**
@@ -232,6 +234,113 @@ export type RecallSettingValue =
   | { knob: "ratio"; value: number }
   | { knob: "diversity"; value: RecallDiversity }
   | { knob: "display"; value: RecallDisplayTier };
+
+/**
+ * 一轮的用量统计。
+ *
+ * ## 为什么只有 token，没有成本
+ *
+ * 实测确认：`usage_statistics` 实时帧里**有** token 数、**没有**成本字段；
+ * 而服务端磁盘上的 `assistant_message.usage.cost` **有**成本，却**被协议整段丢掉**
+ * —— `conversation_messages_list` 返回的同一条消息 `usage` 是 `null`（实测）。
+ * 上游也**没有**模型价格表（成本由 provider / letta-client 算好回传）。
+ *
+ * 所以想显示成本只有两条路：自己维护价格表做估算，或者改协议。后者违反"绝不 fork"，
+ * 前者是**估算**、且价格表必然过时 —— 已决定不做。**宁可不显示，也不显示猜的数字。**
+ *
+ * ## 字段语义（实测，别搞错）
+ *
+ * - `promptTokens` / `completionTokens`：**本轮的**用量
+ * - `cachedInputTokens`：本轮有**多少 prompt token 命中缓存**
+ * - **`totalTokens` / `contextTokens` 不是本轮用量**，它们等于**当前上下文规模**
+ *   （实测：`28025` 而本轮 `prompt=933, completion=84`）。只有"会不会撑爆窗口"才该用它。
+ */
+export interface UsageStats {
+  promptTokens: number;
+  completionTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  /** 当前上下文规模（**不是**本轮用量）。 */
+  contextTokens: number;
+}
+
+/** 把 token 数写成紧凑形式：1234 → "1.2k"；小于 1000 原样。 */
+export function formatTokens(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "—";
+  if (value < 1000) return String(Math.round(value));
+  return `${(value / 1000).toFixed(1)}k`;
+}
+
+/**
+ * 缓存命中率（0–100 的百分比）。
+ *
+ * ⚠️ 返回 `undefined`（而不是 0 或 100）的两种情况，界面必须显示 `—`：
+ * - `promptTokens` 为 0：除零无意义
+ * - `cachedInputTokens` 为 0 且 `promptTokens` 很小：不是"命中率 0%"，而是"没走缓存"
+ *
+ * 另外**夹住上界 100**：实测见过 `cached 27008 > prompt 933` 这种组合
+ * （缓存量与 prompt 的计数口径不同），不加夹会显示成 2896% 这种荒唐数字。
+ */
+export function cacheHitRate(usage: UsageStats): number | undefined {
+  if (usage.promptTokens <= 0) return undefined;
+  if (usage.cachedInputTokens <= 0) return undefined;
+  const rate = (usage.cachedInputTokens / usage.promptTokens) * 100;
+  return Math.min(100, rate);
+}
+
+/** 会话累计（**本次运行**，不落盘 —— 见 §7 C 项的口径说明）。 */
+export interface UsageTotals {
+  turns: number;
+  promptTokens: number;
+  completionTokens: number;
+  reasoningTokens: number;
+  cachedInputTokens: number;
+  /** 最近一次的上下文规模。 */
+  contextTokens: number;
+}
+
+export const EMPTY_USAGE_TOTALS: UsageTotals = {
+  turns: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  reasoningTokens: 0,
+  cachedInputTokens: 0,
+  contextTokens: 0,
+};
+
+/** 把一轮用量累加进会话总计。纯函数，便于脱离服务端断言。 */
+export function accumulateUsage(totals: UsageTotals, usage: UsageStats): UsageTotals {
+  return {
+    turns: totals.turns + 1,
+    promptTokens: totals.promptTokens + usage.promptTokens,
+    completionTokens: totals.completionTokens + usage.completionTokens,
+    reasoningTokens: totals.reasoningTokens + usage.reasoningTokens,
+    cachedInputTokens: totals.cachedInputTokens + usage.cachedInputTokens,
+    // 上下文规模是**瞬时值**，不是累加量 —— 覆盖而不是相加。
+    contextTokens: usage.contextTokens,
+  };
+}
+
+/** 每轮那一行的极简文案：`↑1024 ↓537 · 缓存 95%`。 */
+export function formatUsageLine(usage: UsageStats): string {
+  const parts = [`↑${formatTokens(usage.promptTokens)}`, `↓${formatTokens(usage.completionTokens)}`];
+  const rate = cacheHitRate(usage);
+  if (rate !== undefined) parts.push(`缓存 ${Math.round(rate)}%`);
+  return parts.join(" ");
+}
+
+/** 鼠标悬停时的详情（放 tooltip，不占地方）。 */
+export function formatUsageDetail(usage: UsageStats): string {
+  const lines = [
+    `本轮 prompt：${usage.promptTokens}`,
+    `本轮 completion：${usage.completionTokens}（其中推理 ${usage.reasoningTokens}）`,
+    `命中缓存的输入：${usage.cachedInputTokens}`,
+    `当前上下文规模：${usage.contextTokens}`,
+    "",
+    "仅 token，无成本：服务端不通过协议下发成本，本 GUI 不做估算。",
+  ];
+  return lines.join("\n");
+}
 
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {

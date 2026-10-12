@@ -34,6 +34,9 @@ export function App() {
     loadingHistory,
     recall,
     recallBusy,
+    usageByItem,
+    usageTotals,
+    lastUsage,
     recallDirty,
     restarting,
     applyRecallSetting,
@@ -173,6 +176,8 @@ export function App() {
             onBuild={() => void buildRecallIndex()}
             onApply={(setting) => void applyRecallSetting(setting)}
             onRestart={() => void restartServer()}
+            usageTotals={usageTotals}
+            lastUsage={lastUsage}
           />
         </aside>
 
@@ -191,7 +196,7 @@ export function App() {
             </button>
           </div>
 
-          <MessageList items={items} loading={loadingHistory} />
+          <MessageList items={items} loading={loadingHistory} usageByItem={usageByItem} />
 
           <div className="approval-area">
             {approvals.map((approval) => (

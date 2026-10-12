@@ -167,3 +167,12 @@ button {
 button:disabled { background: #333a46; color: var(--muted); cursor: not-allowed; }
 button.interrupt { background: #3a2b2d; color: var(--warn); }
 button.interrupt:disabled { background: #2a2a2e; color: var(--muted); }
+
+/* C 项：用量（只有 token，没有成本） */
+.usage-line {
+  margin: 2px 0 0 4px; color: var(--muted); font-size: 11px;
+  font-family: ui-monospace, "SF Mono", monospace; cursor: help;
+}
+.usage-panel { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.usage-head { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
+.usage-total { font-size: 12px; color: var(--fg); font-family: ui-monospace, "SF Mono", monospace; }

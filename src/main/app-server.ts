@@ -8,6 +8,7 @@ import type {
   HaruyukiEvent,
   PermissionMode,
   RuntimeScope,
+  UsageStats,
 } from "@/shared/ipc-contract";
 
 type Frame = Record<string, unknown> & { type?: string };
@@ -351,6 +352,35 @@ export async function fetchConversationHistory(
   };
 }
 
+/** 协议里的数字字段可能是 undefined / 字符串 / null，一律收敛成非负整数。 */
+function int(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
+/**
+ * 解析 `usage_statistics` 帧。
+ *
+ * ⚠️ **`total_tokens` 不是本轮用量** —— 实测它等于 `context_tokens`（当前上下文规模），
+ * 而本轮用量是 `prompt_tokens` / `completion_tokens`。当成同一回事会让每轮数字虚高几十倍。
+ *
+ * 实测形状（0.2.0）：
+ * ```json
+ * { "message_type": "usage_statistics", "prompt_tokens": 933, "completion_tokens": 84,
+ *   "total_tokens": 28025, "cached_input_tokens": 27008, "cache_write_tokens": 0,
+ *   "reasoning_tokens": 78, "context_tokens": 28025 }
+ * ```
+ */
+export function parseUsage(delta: Record<string, unknown>): UsageStats {
+  return {
+    promptTokens: int(delta.prompt_tokens),
+    completionTokens: int(delta.completion_tokens),
+    cachedInputTokens: int(delta.cached_input_tokens),
+    reasoningTokens: int(delta.reasoning_tokens),
+    contextTokens: int(delta.context_tokens) || int(delta.total_tokens),
+  };
+}
+
 /** 把服务端的原始帧收敛成 GUI 关心的少量事件。 */
 export class AppServerBridge {
   private client: AppServerClient | null = null;
@@ -612,6 +642,10 @@ export class AppServerBridge {
           id: str(delta.tool_call_id) || str(delta.id),
           output: str(delta.tool_return) || extractText(delta.content),
         });
+        return;
+      // 用量帧此前一直被静默丢弃。它**只有 token、没有成本** —— 见 UsageStats 的说明。
+      case "usage_statistics":
+        this.emit({ kind: "usage", usage: parseUsage(delta) });
         return;
       case "loop_error":
         this.emit({ kind: "error", message: str(delta.message) || "回合出错" });

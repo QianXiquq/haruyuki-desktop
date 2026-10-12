@@ -9,8 +9,14 @@ import type {
   RecallStatusSummary,
   RuntimeScope,
   ServerStatus,
+  UsageStats,
+  UsageTotals,
 } from "@/shared/ipc-contract";
-import { parseRecallStatus } from "@/shared/ipc-contract";
+import {
+  EMPTY_USAGE_TOTALS,
+  accumulateUsage,
+  parseRecallStatus,
+} from "@/shared/ipc-contract";
 
 declare global {
   interface Window {
@@ -90,8 +96,22 @@ export function useHaruyuki() {
   const [activeIdRef] = useState<{ current: string | null }>({ current: null });
   /** 当前选中的 agent id，同上。 */
   const [agentIdRef] = useState<{ current: string | null }>({ current: null });
+  /** 本轮 assistant 气泡的 id；usage 帧到来时按它挂靠。 */
+  const [pendingAssistantRef] = useState<{ current: string | null }>({ current: null });
   const [recall, setRecall] = useState<RecallStatusSummary | null>(null);
   const [recallBusy, setRecallBusy] = useState(false);
+  /**
+   * 每轮用量，按**消息 id** 存。
+   *
+   * ⚠️ 顺序陷阱：`usage_statistics` 帧在一轮的**最后**才到（在 assistant 正文和
+   * turn_finished 之后），所以不能用"当前最后一条 assistant"去挂 —— 那时它已经是
+   * 上一轮的气泡了。做法是：assistant 气泡一创建就记下它的 id（`pendingAssistantRef`），
+   * 等 usage 帧到了再按 id 挂上。
+   */
+  const [usageByItem, setUsageByItem] = useState<Record<string, UsageStats>>({});
+  /** **本次运行**的累计（不落盘，重启清零 —— 口径写在界面上）。 */
+  const [usageTotals, setUsageTotals] = useState<UsageTotals>(EMPTY_USAGE_TOTALS);
+  const [lastUsage, setLastUsage] = useState<UsageStats | null>(null);
   /** 有设置改动尚未通过重启生效 —— 界面要一直挂着提示，直到重启完成。 */
   const [recallDirty, setRecallDirty] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -104,9 +124,19 @@ export function useHaruyuki() {
           setItems((prev) => [...prev, { id: uid(), kind: "user", text: event.text }]);
           setBusy(true);
           return;
-        case "assistant_delta":
-          setItems((prev) => appendText(prev, "assistant", event.text));
+        case "assistant_delta": {
+          const before = pendingAssistantRef.current;
+          setItems((prev) => {
+            const next = appendText(prev, "assistant", event.text);
+            // `appendText` 合并进已有气泡时 id 不变；新建时取新气泡的 id。
+            const last = next[next.length - 1];
+            if (last && last.kind === "assistant" && last.id !== before) {
+              pendingAssistantRef.current = last.id;
+            }
+            return next;
+          });
           return;
+        }
         case "reasoning_delta":
           setItems((prev) => appendText(prev, "reasoning", event.text));
           return;
@@ -137,6 +167,8 @@ export function useHaruyuki() {
         case "turn_finished":
           setBusy(false);
           setApprovals([]);
+          // 清掉本轮的气泡指针：usage 帧本该在它之前到达，清掉可防止下一轮误挂。
+          pendingAssistantRef.current = null;
           // 回合结束后该会话的 last_message_at / 消息条数都变了，列表要重排，
           // 否则侧栏里的时间是旧的、"N 条"也对不上。
           // 直接用 window.haruyuki 而不是 refreshConversations：后者定义在下面，
@@ -150,6 +182,14 @@ export function useHaruyuki() {
               });
           }
           return;
+        case "usage": {
+          // 挂到本轮 assistant 气泡上（见 usageByItem 的注释），并累加进"本次运行"。
+          const target = pendingAssistantRef.current;
+          if (target) setUsageByItem((prev) => ({ ...prev, [target]: event.usage }));
+          setLastUsage(event.usage);
+          setUsageTotals((prev) => accumulateUsage(prev, event.usage));
+          return;
+        }
         case "notice":
           // 服务端的信息性提示（0.2.0 的 recall 降级/超时走这条）。不是错误，但要可见。
           setItems((prev) => [...prev, { id: uid(), kind: "notice", text: event.text }]);
@@ -170,7 +210,7 @@ export function useHaruyuki() {
       offEvent();
     };
     // agentIdRef 是惰性初始化的稳定对象（setAgentIdRef 从不调用），不会触发重订阅。
-  }, [agentIdRef]);
+  }, [agentIdRef, pendingAssistantRef]);
 
   /** 统一把失败暴露到界面上，绝不静默吞掉。 */
   const guard = useCallback(async (label: string, fn: () => Promise<void>) => {
@@ -381,6 +421,12 @@ export function useHaruyuki() {
           // 新会话：清空界面。不做乐观猜测，只信服务端返回的 conversation_id。
           setItems([]);
         }
+        // 切换会话时重置用量：历史消息里**没有** usage（协议把它丢了），
+        // 所以"本次运行累计"只能是这一段的，绝不能跨会话累加成假的总数。
+        setUsageByItem({});
+        setUsageTotals(EMPTY_USAGE_TOTALS);
+        setLastUsage(null);
+        pendingAssistantRef.current = null;
 
         // 会话的 last_message_at 会变，列表要在进入后重新排一次。
         try {
@@ -499,6 +545,9 @@ export function useHaruyuki() {
     loadingHistory,
     recall,
     recallBusy,
+    usageByItem,
+    usageTotals,
+    lastUsage,
     recallDirty,
     restarting,
     applyRecallSetting,

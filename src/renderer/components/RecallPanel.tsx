@@ -5,7 +5,10 @@ import type {
   RecallSettingValue,
   RecallStatusSummary,
   ServerStatus,
+  UsageStats,
+  UsageTotals,
 } from "@/shared/ipc-contract";
+import { formatTokens } from "@/shared/ipc-contract";
 
 interface Props {
   recall: RecallStatusSummary | null;
@@ -17,6 +20,9 @@ interface Props {
   onBuild: () => void;
   onApply: (setting: RecallSettingValue) => void;
   onRestart: () => void;
+  usageTotals: UsageTotals;
+  /** 最近一轮的用量（用于展示上下文规模）。 */
+  lastUsage: UsageStats | null;
 }
 
 /** 表单里的草稿值。全部按字符串存，避免数字输入框在编辑中途被强行转成数字。 */
@@ -79,6 +85,8 @@ export function RecallPanel({
   onBuild,
   onApply,
   onRestart,
+  usageTotals,
+  lastUsage,
 }: Props) {
   const connected = status.state === "connected";
   const [draft, setDraft] = useState<Draft>(EMPTY);
@@ -204,6 +212,34 @@ export function RecallPanel({
       >
         {busy ? "构建中…" : "构建召回索引"}
       </button>
+
+      {/* ---------- 用量（C 项：只有 token，没有成本）---------- */}
+      <div className="usage-panel">
+        <div className="usage-head">本次运行用量</div>
+        {usageTotals.turns === 0 ? (
+          <div className="recall-line muted small">
+            还没有产生用量。历史消息里没有用量数据（协议不下发），所以这里只统计本次运行。
+          </div>
+        ) : (
+          <>
+            <div className="usage-total">
+              {usageTotals.turns} 轮 · 累计 {formatTokens(usageTotals.promptTokens + usageTotals.completionTokens)} tokens
+            </div>
+            <div className="recall-line muted small">
+              prompt {formatTokens(usageTotals.promptTokens)} · completion{" "}
+              {formatTokens(usageTotals.completionTokens)}（含推理 {formatTokens(usageTotals.reasoningTokens)}）
+            </div>
+            {lastUsage ? (
+              <div className="recall-line muted small">
+                当前上下文规模 {lastUsage.contextTokens.toLocaleString()}
+              </div>
+            ) : null}
+          </>
+        )}
+        <div className="recall-line muted small">
+          只有 token，<strong>没有成本</strong>：服务端不通过协议下发成本，本 GUI 也不做估算。
+        </div>
+      </div>
 
       {/* ---------- 设置（B1）---------- */}
       <details className="recall-settings">
