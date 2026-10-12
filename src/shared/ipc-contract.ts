@@ -104,6 +104,17 @@ export type HaruyukiEvent =
   | { kind: "user_message"; text: string }
   | { kind: "assistant_delta"; text: string }
   | { kind: "reasoning_delta"; text: string }
+  /**
+   * **批处理后的**流式增量（主进程每 ~50ms 合并一次）。
+   *
+   * 为什么需要它：服务端逐 token 推 delta，修复前实测**一轮短回复 231 次增量事件**
+   * （推理 225 + 正文 6）。渲染进程每收一次就复制整个 items 数组并全量重渲染，
+   * 合起来 O(n²) —— 发一句"你好"就能把 CPU 打满。
+   *
+   * 正文与推理**合并在同一个事件里**：分成两个事件会让同一个窗口里做两次
+   * `setItems`，等于白批一半。
+   */
+  | { kind: "stream_batch"; assistant?: string; reasoning?: string }
   | { kind: "tool_call"; id: string; name: string; input: unknown }
   | { kind: "tool_return"; id: string; output: string }
   | { kind: "approval_request"; requestId: string; toolName: string; input: unknown }

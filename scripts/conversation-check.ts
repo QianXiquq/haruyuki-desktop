@@ -18,6 +18,7 @@ import { AppServerBridge, deriveConversationTitle, toChatItems, toChatItemsWithD
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
+import { collectAssistantText } from "./event-text";
 
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
@@ -51,10 +52,7 @@ const MARKER = `P1 会话恢复自测 ${Date.now().toString(36)}`;
 bridge.sendMessage(`Reply with exactly: ACK. (${MARKER})`);
 await new Promise((resolve) => setTimeout(resolve, 35_000));
 
-const assistantText = events
-  .filter((e): e is Extract<HaruyukiEvent, { kind: "assistant_delta" }> => e.kind === "assistant_delta")
-  .map((e) => e.text)
-  .join("");
+const assistantText = collectAssistantText(events);
 check("新会话收到了 assistant 正文", assistantText.trim().length > 0, JSON.stringify(assistantText.slice(0, 60)));
 
 // ---------- 1. 会话列表 ----------

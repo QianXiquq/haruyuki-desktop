@@ -23,7 +23,8 @@
     "check:rename": "bun scripts/rename-check.ts",
     "check:agent": "bun scripts/agent-check.ts",
     "check:memory": "bun scripts/memory-check.ts",
-    "check:search": "bun scripts/search-check.ts"
+    "check:search": "bun scripts/search-check.ts",
+    "check:perf": "bun scripts/perf-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

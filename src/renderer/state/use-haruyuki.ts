@@ -148,6 +148,24 @@ export function useHaruyuki() {
           setItems((prev) => [...prev, { id: uid(), kind: "user", text: event.text }]);
           setBusy(true);
           return;
+        case "stream_batch": {
+          // 一次 setItems 同时处理正文与推理 —— 这是批处理的关键：
+          // 每 ~50ms 只做一次状态更新与一次重渲染，而不是每个 token 各一次。
+          setItems((prev) => {
+            let next = prev;
+            if (event.reasoning) next = appendText(next, "reasoning", event.reasoning);
+            if (event.assistant) {
+              const before = pendingAssistantRef.current;
+              next = appendText(next, "assistant", event.assistant);
+              const last = next[next.length - 1];
+              if (last && last.kind === "assistant" && last.id !== before) {
+                pendingAssistantRef.current = last.id;
+              }
+            }
+            return next;
+          });
+          return;
+        }
         case "assistant_delta": {
           const before = pendingAssistantRef.current;
           setItems((prev) => {

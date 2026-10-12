@@ -9,6 +9,7 @@ import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
+import { collectAssistantText } from "./event-text";
 
 
 const SERVER_CMD = resolveCheckServerCommand();
@@ -28,6 +29,10 @@ void rawClient;
 const bridge = new AppServerBridge((event) => {
   events.push(event);
   switch (event.kind) {
+    // 批处理后的增量：正文与推理在同一个事件里（见 event-text.ts）。
+    case "stream_batch":
+      if (event.assistant) process.stdout.write(event.assistant);
+      return;
     case "assistant_delta":
       if (event.text) process.stdout.write(event.text);
       return;
@@ -104,10 +109,7 @@ console.log(
 console.log(
   after.some((e) => e.kind === "turn_finished") ? "✅ 中断后回合正常终止" : "⚠️ 中断后未见 turn_finished",
 );
-const text = events
-  .filter((e): e is Extract<HaruyukiEvent, { kind: "assistant_delta" }> => e.kind === "assistant_delta")
-  .map((e) => e.text)
-  .join("");
+const text = collectAssistantText(events);
 console.log("assistant 累计正文长度:", text.length);
 console.log("\n见过的帧类型:", [...seenFrameTypes].sort().join(", "));
 console.log("见过的 message_type:", [...seenMessageTypes].sort().join(", "));

@@ -19,6 +19,7 @@ import WebSocket from "ws";
 import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
+import { collectAssistantText } from "./event-text";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
@@ -121,11 +122,7 @@ if (applied.modelId) await bridge.setModel(applied.modelId);
 const before = events.length;
 bridge.sendMessage("Reply with exactly: MODEL-OK");
 await new Promise((r) => setTimeout(r, 32000));
-const text = events
-  .slice(before)
-  .filter((e): e is Extract<HaruyukiEvent, { kind: "assistant_delta" }> => e.kind === "assistant_delta")
-  .map((e) => e.text)
-  .join("");
+const text = collectAssistantText(events.slice(before));
 check("切换模型后回合仍能正常完成", text.includes("MODEL-OK"), JSON.stringify(text.slice(0, 80)));
 
 const failedChecks = checks.filter((c) => !c.ok);

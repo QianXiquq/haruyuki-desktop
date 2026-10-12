@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ChatItem, UsageStats } from "@/shared/ipc-contract";
 import { formatUsageDetail, formatUsageLine } from "@/shared/ipc-contract";
 
@@ -55,6 +56,28 @@ function renderItem(item: ChatItem) {
   }
 }
 
+/**
+ * 单行消息，做了 `memo`。
+ *
+ * ⚠️ 这是性能修复的一半：流式期间 `items` 数组的**引用**每次都变（新数组），
+ * 不 memo 的话每条历史消息都会跟着重建 DOM —— 长会话下这就是"卡死"的放大器。
+ * memo 之后只有内容真正变化的那一行会重渲染。
+ */
+const MessageRow = memo(function MessageRow({
+  item,
+  usage,
+}: {
+  item: ChatItem;
+  usage?: UsageStats;
+}) {
+  return (
+    <>
+      {renderItem(item)}
+      {item.kind === "assistant" && usage ? <UsageLine usage={usage} /> : null}
+    </>
+  );
+});
+
 export function MessageList({ items, loading = false, usageByItem = {} }: Props) {
   return (
     <div className="message-list">
@@ -65,10 +88,7 @@ export function MessageList({ items, loading = false, usageByItem = {} }: Props)
       ) : null}
       {items.map((item) => (
         <div key={item.id}>
-          {renderItem(item)}
-          {item.kind === "assistant" && usageByItem[item.id] ? (
-            <UsageLine usage={usageByItem[item.id] as UsageStats} />
-          ) : null}
+          <MessageRow item={item} usage={usageByItem[item.id]} />
         </div>
       ))}
     </div>

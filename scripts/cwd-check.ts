@@ -20,6 +20,7 @@ import WebSocket from "ws";
 import { AppServerBridge, workingDirectoryScopeKey } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
+import { collectAssistantText } from "./event-text";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
@@ -126,11 +127,7 @@ bridge.sendMessage(
     "line 2 = the contents of the file MARKER.txt in the current directory. Do not use any other file.",
 );
 await new Promise((r) => setTimeout(r, 45_000));
-const text = events
-  .slice(before)
-  .filter((e): e is Extract<HaruyukiEvent, { kind: "assistant_delta" }> => e.kind === "assistant_delta")
-  .map((e) => e.text)
-  .join("");
+const text = collectAssistantText(events.slice(before));
 console.log(`   agent 回复: ${JSON.stringify(text.slice(0, 220))}`);
 check(
   "agent 报出的 cwd 就是新目录（真的切过去了）",

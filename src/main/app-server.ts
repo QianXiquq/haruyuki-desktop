@@ -462,6 +462,21 @@ export function workingDirectoryScopeKey(
 }
 
 /** 把服务端的原始帧收敛成 GUI 关心的少量事件。 */
+/**
+ * 增量事件的批处理窗口（毫秒）。
+ *
+ * ## 为什么必须批处理（性能 bug 的根因）
+ *
+ * 服务端是**逐 token** 推 delta 的。修复前实测一轮短回复就产生 **231 次增量事件**
+ * （`reasoning_delta` 225 + `assistant_delta` 6）—— 而渲染进程每收到一次就
+ * **复制整个 items 数组**（`O(n)`）并**全量重渲染**整棵消息树。合起来是 O(n²)，
+ * 于是"发一句你好"就能把 CPU 打满、界面卡死。
+ *
+ * 50ms 是刻意的：比人眼能分辨的间隔小（视觉上仍是连续流式），又能把
+ * 数百次事件压到十几次。
+ */
+const DELTA_FLUSH_MS = 50;
+
 export class AppServerBridge {
   private client: AppServerClient | null = null;
 
@@ -473,7 +488,63 @@ export class AppServerBridge {
    */
   private runtime: RuntimeScope | null = null;
 
+  /** 待冲刷的正文增量（批处理窗口内累积）。 */
+  private pendingAssistant = "";
+  /** 待冲刷的推理增量。 */
+  private pendingReasoning = "";
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(private readonly emit: (event: HaruyukiEvent) => void) {}
+
+  /**
+   * 把增量文本放进缓冲，并在窗口结束时**一次性**发出。
+   *
+   * 正文与推理共用一个事件（`stream_batch`）—— 分开成两个事件会让渲染进程
+   * 在同一个窗口里做两次 `setItems`，等于白批了一半。
+   */
+  private queueDelta(kind: "assistant" | "reasoning", text: string): void {
+    if (!text) return;
+    if (kind === "assistant") this.pendingAssistant += text;
+    else this.pendingReasoning += text;
+    if (this.flushTimer !== null) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      this.flushDeltas();
+    }, DELTA_FLUSH_MS);
+  }
+
+  /**
+   * 立即冲刷缓冲。
+   *
+   * ⚠️ **任何非增量事件之前都必须先冲刷** —— 否则顺序会错乱
+   * （例如 `turn_finished` 先到、正文后到，界面就会出现"回合结束但正文还在长"）。
+   */
+  private flushDeltas(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    const assistant = this.pendingAssistant;
+    const reasoning = this.pendingReasoning;
+    this.pendingAssistant = "";
+    this.pendingReasoning = "";
+    if (!assistant && !reasoning) return;
+    this.emit({
+      kind: "stream_batch",
+      ...(assistant ? { assistant } : {}),
+      ...(reasoning ? { reasoning } : {}),
+    });
+  }
+
+  /** 丢掉尚未冲刷的缓冲（关连接时用，避免往已关闭的窗口发事件）。 */
+  private discardPendingDeltas(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.pendingAssistant = "";
+    this.pendingReasoning = "";
+  }
 
   async connect(wsUrl: string, WebSocketImpl: unknown): Promise<number> {
     const client = new AppServerClient({ url: wsUrl, WebSocket: WebSocketImpl as never });
@@ -985,6 +1056,8 @@ export class AppServerBridge {
   }
 
   close(): void {
+    // 丢弃未冲刷的增量：否则定时器可能在窗口关闭后再发一次事件。
+    this.discardPendingDeltas();
     try {
       this.client?.close();
     } catch {
@@ -1006,6 +1079,9 @@ export class AppServerBridge {
 
   private handleMessage(message: WsProtocolMessage): void {
     const frame = message as unknown as Frame;
+
+    // 增量事件之外的一切，都要先把缓冲冲刷掉 —— 保证事件顺序与线上一致。
+    if (frame.type !== "stream_delta") this.flushDeltas();
 
     switch (frame.type) {
       case "stream_delta":
@@ -1049,11 +1125,14 @@ export class AppServerBridge {
 
     switch (str(delta.message_type)) {
       case "assistant_message":
-        this.emit({ kind: "assistant_delta", text: extractText(delta.content) });
+        this.queueDelta("assistant", extractText(delta.content));
         return;
       case "reasoning_message":
-        this.emit({ kind: "reasoning_delta", text: str(delta.reasoning) || extractText(delta.content) });
+        this.queueDelta("reasoning", str(delta.reasoning) || extractText(delta.content));
         return;
+      // 以下都是**非增量**事件：先把正文/推理的缓冲冲刷掉，避免顺序错乱。
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "tool_call_message": {
         const toolCall = asRecord(delta.tool_call);
         this.emit({
@@ -1064,6 +1143,8 @@ export class AppServerBridge {
         });
         return;
       }
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "approval_request_message": {
         // 需要审批的工具，其调用信息随 approval_request_message 到达
         // （不是单独的 tool_call_message —— 实测确认）。
@@ -1076,6 +1157,8 @@ export class AppServerBridge {
         });
         return;
       }
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "tool_return_message":
         this.emit({
           kind: "tool_return",
@@ -1084,9 +1167,13 @@ export class AppServerBridge {
         });
         return;
       // 用量帧此前一直被静默丢弃。它**只有 token、没有成本** —— 见 UsageStats 的说明。
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "usage_statistics":
         this.emit({ kind: "usage", usage: parseUsage(delta) });
         return;
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "loop_error":
         this.emit({ kind: "error", message: str(delta.message) || "回合出错" });
         return;
@@ -1094,6 +1181,8 @@ export class AppServerBridge {
       // `status` 消息到达（服务端 `emitRecoverableStatusNotice` → `emitStatusDelta`）。
       // 不接的话，用户只会看到"这一轮没带上召回内容"而不知道原因。
       // 0.1.3 也会发 status（如 stale_approval_conflict_recovery），只是都被丢了。
+      // 非增量事件：先冲刷正文/推理缓冲，保证顺序。
+      this.flushDeltas();
       case "status": {
         const text = str(delta.message);
         if (text) this.emit({ kind: "notice", text });

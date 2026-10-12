@@ -11,6 +11,7 @@ import { AppServerBridge } from "@/main/app-server";
 import { startServer } from "@/main/server-process";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
+import { assistantTextOf, collectAssistantText } from "./event-text";
 
 
 const SERVER_CMD = resolveCheckServerCommand();
@@ -22,7 +23,9 @@ console.log("① 服务端已启动:", server.wsUrl);
 
 const bridge = new AppServerBridge((event) => {
   events.push(event);
-  if (event.kind === "assistant_delta" && event.text) process.stdout.write(event.text);
+  // 批处理后的增量（逐 token 事件已被合并，见 event-text.ts 的说明）。
+  const live = assistantTextOf(event);
+  if (live) process.stdout.write(live);
   if (event.kind === "error") console.log("\n   [error]", event.message);
 });
 
@@ -43,10 +46,7 @@ bridge.sendMessage("Reply with exactly: PONG");
 await new Promise((resolve) => setTimeout(resolve, 30_000));
 console.log("\n   ---");
 
-const assistantText = events
-  .filter((e): e is Extract<HaruyukiEvent, { kind: "assistant_delta" }> => e.kind === "assistant_delta")
-  .map((e) => e.text)
-  .join("");
+const assistantText = collectAssistantText(events);
 
 console.log("\n=== 断言 ===");
 console.log("assistant 正文:", JSON.stringify(assistantText));
