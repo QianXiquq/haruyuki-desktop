@@ -8,6 +8,9 @@ import type {
   HaruyukiEvent,
   PermissionMode,
   DirectoryListing,
+  MemoryCommit,
+  MemoryFile,
+  MemorySnapshot,
   ModelCatalog,
   RuntimeScope,
   UsageStats,
@@ -364,6 +367,21 @@ export async function fetchConversationHistory(
   };
 }
 
+/** 把 `list_memory` / `read_memory_file` 的条目归一成界面用的形状。 */
+function toMemoryFile(entry: Record<string, unknown>): MemoryFile {
+  const path = str(entry.relative_path) || str(entry.path);
+  const content = typeof entry.content === "string" ? entry.content : "";
+  return {
+    path,
+    isSystem: entry.is_system === true,
+    content,
+    size: typeof entry.size === "number" ? entry.size : content.length,
+    kind: str(entry.kind) || "text",
+    ...(str(entry.description) ? { description: str(entry.description) } : {}),
+    ...(str(entry.mime_type) ? { mimeType: str(entry.mime_type) } : {}),
+  };
+}
+
 /** 去掉结尾斜杠，便于比较路径（服务端可能保留也可能去掉）。 */
 function stripTrailingSlash(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -586,6 +604,115 @@ export class AppServerBridge {
     if (response.success === false) {
       throw new Error(`会话改名失败：${response.error ?? "未知原因"}`);
     }
+  }
+
+  /**
+   * 列出 agent 的记忆文件（`list_memory`）。
+   *
+   * 实测：**一次返回全部文件且自带 `content`**（单帧响应，非分块）。
+   * 所以浏览器不需要为每个文件再发一次 `read_memory_file`。
+   */
+  async listMemory(agentId: string): Promise<MemorySnapshot> {
+    if (!agentId) throw new Error("listMemory 需要 agentId");
+    const response = (await this.current.request("list_memory", { agent_id: agentId })) as unknown as {
+      success?: boolean;
+      entries?: unknown[];
+      memfs_enabled?: boolean;
+      memfs_initialized?: boolean;
+      error?: string;
+    };
+    if (response.success === false) {
+      throw new Error(`list_memory 失败：${response.error ?? "未知原因"}`);
+    }
+    return {
+      files: (response.entries ?? []).map((raw) => toMemoryFile(asRecord(raw))),
+      memfsEnabled: response.memfs_enabled === true,
+      memfsInitialized: response.memfs_initialized === true,
+    };
+  }
+
+  /**
+   * 读记忆文件的**原始内容**（含 frontmatter）。
+   *
+   * ⚠️ `read_memory_file` 的响应结构与 `list_memory` 的条目**不同**：
+   * 它是 `{ path, content, encoding, success }`，`content` 是**完整原文**（含 frontmatter）。
+   * 早先我错把它按 list 条目的形状去映射（找 `relative_path`），会一路取到空值。
+   */
+  async readMemoryFile(agentId: string, path: string): Promise<string> {
+    if (!agentId) throw new Error("readMemoryFile 需要 agentId");
+    if (!path) throw new Error("readMemoryFile 需要 path");
+    const response = (await this.current.request("read_memory_file", {
+      agent_id: agentId,
+      path,
+    })) as unknown as { success?: boolean; content?: string; error?: string };
+    if (response.success === false) {
+      throw new Error(`读取记忆文件失败：${response.error ?? "未知原因"}`);
+    }
+    if (typeof response.content !== "string") {
+      throw new Error("读取记忆文件成功但没拿到 content");
+    }
+    return response.content;
+  }
+
+  /**
+   * 写记忆文件（`write_memory_file`）。**写操作，且服务端会立刻提交一次 git**。
+   *
+   * 服务端会拒绝逃逸出记忆根的路径。我们**不自己拼路径**，原样把它交给服务端裁定，
+   * 免得自制的校验与服务端不一致反而给出错误的安全感。
+   */
+  async writeMemoryFile(
+    agentId: string,
+    path: string,
+    content: string,
+    commitMessage?: string,
+  ): Promise<void> {
+    if (!agentId) throw new Error("writeMemoryFile 需要 agentId");
+    if (!path) throw new Error("writeMemoryFile 需要 path");
+    const response = (await this.current.request("write_memory_file", {
+      agent_id: agentId,
+      path,
+      content,
+      ...(commitMessage?.trim() ? { commit_message: commitMessage.trim() } : {}),
+    })) as unknown as { success?: boolean; error?: string };
+    if (response.success === false) {
+      throw new Error(`写入记忆文件失败：${response.error ?? "未知原因"}`);
+    }
+  }
+
+  /** 删记忆文件（`delete_memory_file`）。**写操作。** */
+  async deleteMemoryFile(agentId: string, path: string, commitMessage?: string): Promise<void> {
+    if (!agentId) throw new Error("deleteMemoryFile 需要 agentId");
+    if (!path) throw new Error("deleteMemoryFile 需要 path");
+    const response = (await this.current.request("delete_memory_file", {
+      agent_id: agentId,
+      path,
+      ...(commitMessage?.trim() ? { commit_message: commitMessage.trim() } : {}),
+    })) as unknown as { success?: boolean; error?: string };
+    if (response.success === false) {
+      throw new Error(`删除记忆文件失败：${response.error ?? "未知原因"}`);
+    }
+  }
+
+  /** 记忆提交历史（`memory_history`）。不传 path = 全部文件的全局历史。 */
+  async memoryHistory(agentId: string, path?: string, limit = 50): Promise<MemoryCommit[]> {
+    if (!agentId) throw new Error("memoryHistory 需要 agentId");
+    const response = (await this.current.request("memory_history", {
+      agent_id: agentId,
+      ...(path ? { file_path: path } : {}),
+      limit,
+    })) as unknown as { success?: boolean; commits?: unknown[]; error?: string };
+    if (response.success === false) {
+      throw new Error(`读取记忆历史失败：${response.error ?? "未知原因"}`);
+    }
+    return (response.commits ?? []).map((raw) => {
+      const c = asRecord(raw);
+      const hash = str(c.hash) || str(c.id) || str(c.commit);
+      return {
+        hash,
+        ...(str(c.message) ? { message: str(c.message) } : {}),
+        ...(str(c.date) ? { date: str(c.date) } : {}),
+      };
+    });
   }
 
   /** 列出可选模型（`list_models`）。 */

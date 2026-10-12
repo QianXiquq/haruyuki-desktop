@@ -452,6 +452,40 @@ export interface ModelCatalog {
   availableHandles: string[];
 }
 
+/**
+ * agent 的记忆文件（来自 `list_memory`）。
+ *
+ * 实测：`list_memory` **一次返回全部文件且自带 `content`**（单帧
+ * `list_memory_response`，不是分块的），所以浏览器不需要额外取正文。
+ * 文件路径是**相对记忆根目录**的，且服务端会拒绝逃逸出根目录的路径。
+ */
+export interface MemoryFile {
+  /** 相对记忆根目录的路径，例如 `human.md`、`system/persona.md`。 */
+  path: string;
+  /** 服务端认为这是"系统"文件（比如人格、引导）。 */
+  isSystem: boolean;
+  description?: string;
+  content: string;
+  size: number;
+  /** 例如 `markdown` / `image` / `text`。 */
+  kind: string;
+  mimeType?: string;
+}
+
+export interface MemorySnapshot {
+  files: MemoryFile[];
+  /** MemFS 是否启用。**未启用时记忆是另一套存储**，这份列表可能不完整。 */
+  memfsEnabled: boolean;
+  memfsInitialized: boolean;
+}
+
+/** 一个记忆文件的历史提交（`memory_history`）。 */
+export interface MemoryCommit {
+  hash: string;
+  message?: string;
+  date?: string;
+}
+
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
@@ -504,6 +538,49 @@ export interface HaruyukiApi {
    * 传空字符串 = 清除自定义标题，界面会退回自动推导。
    */
   renameConversation(conversationId: string, summary: string): Promise<void>;
+  /**
+   * 列出 agent 的记忆文件（`list_memory`，只读）。
+   *
+   * ⚠️ 需要 `agent_id` —— 记忆是**按 agent** 存的。所以调用方要先确定当前 agent。
+   */
+  listMemory(agentId: string): Promise<MemorySnapshot>;
+  /**
+   * 读一个记忆文件的**原始内容**（`read_memory_file`，只读）。
+   *
+   * ⚠️ **与 `listMemory` 的 `content` 不是一回事**，这个区别决定了编辑能不能用：
+   *
+   * | 来源 | 内容 |
+   * |---|---|
+   * | `listMemory().files[].content` | **已剥掉 frontmatter 的正文** |
+   * | 本方法 | **含 frontmatter 的完整原文** |
+   *
+   * 实测 `human.md`：磁盘 263 字符（frontmatter `---
+name: Human
+description: …
+---`），
+   * 而 `list_memory` 报的 `content` 只有 178 字符的正文。
+   *
+   * 后果：**编辑必须基于本方法的返回值**。若拿 `list_memory` 的正文去保存，写回的
+   * 就是没有 frontmatter 的文件 —— 记忆校验会拒绝（实测报
+   * `missing frontmatter (must start with ---)`），而且**文件仍会落到工作区**。
+   */
+  readMemoryFile(agentId: string, path: string): Promise<string>;
+  /**
+   * 写一个记忆文件（`write_memory_file`，**写操作，会自动提交**）。
+   *
+   * 服务端会拒绝逃逸出记忆根的路径，并且**每次写入都是一个 git 提交** ——
+   * 所以一旦写错，可以用 `memoryHistory` 找回旧版本。
+   */
+  writeMemoryFile(
+    agentId: string,
+    path: string,
+    content: string,
+    commitMessage?: string,
+  ): Promise<void>;
+  /** 删一个记忆文件（`delete_memory_file`，**写操作**）。 */
+  deleteMemoryFile(agentId: string, path: string, commitMessage?: string): Promise<void>;
+  /** 一个记忆文件（或全部文件）的提交历史（`memory_history`）。 */
+  memoryHistory(agentId: string, path?: string, limit?: number): Promise<MemoryCommit[]>;
   /** 列出可选模型（`list_models`）。 */
   listModels(): Promise<ModelCatalog>;
   /**

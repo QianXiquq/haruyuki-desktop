@@ -5,6 +5,8 @@ import type {
   ConversationSummary,
   HaruyukiApi,
   PermissionMode,
+  MemoryCommit,
+  MemorySnapshot,
   ModelCatalog,
   RecallSettingValue,
   RecallStatusSummary,
@@ -120,6 +122,9 @@ export function useHaruyuki() {
    */
   const [cwd, setCwd] = useState<WorkingDirectorySummary | null>(null);
   const [models, setModels] = useState<ModelCatalog | null>(null);
+  /** 记忆快照（按 agent 取；null = 还没读或读失败）。 */
+  const [memory, setMemory] = useState<MemorySnapshot | null>(null);
+  const [memoryBusy, setMemoryBusy] = useState(false);
   /**
    * 当前生效的模型 id。
    *
@@ -366,6 +371,74 @@ export function useHaruyuki() {
       return created.id;
     },
     [notice, refreshAgents],
+  );
+
+  /**
+   * 读记忆文件列表。
+   *
+   * ⚠️ 记忆**按 agent** 存，所以必须有 agentId。失败**抛错**给调用方 ——
+   * 记忆浏览器是个显式打开的界面，读不到就必须说清，不能显示成"没有记忆"。
+   */
+  const refreshMemory = useCallback(async (): Promise<MemorySnapshot | null> => {
+    const agentId = agentIdRef.current;
+    if (!agentId) return null;
+    setMemoryBusy(true);
+    try {
+      const snapshot = await window.haruyuki.listMemory(agentId);
+      setMemory(snapshot);
+      return snapshot;
+    } finally {
+      setMemoryBusy(false);
+    }
+  }, [agentIdRef]);
+
+  /**
+   * 读记忆文件的**原始内容**（含 frontmatter）。
+   *
+   * ⚠️ 编辑必须用这个，**不能**用 `list_memory` 的 `content` —— 后者已被剥掉
+   * frontmatter，拿它保存会写出没有 frontmatter 的文件，被记忆校验拒绝。
+   */
+  const loadMemoryFile = useCallback(
+    async (path: string): Promise<string> => {
+      const agentId = agentIdRef.current;
+      if (!agentId) throw new Error("尚未选择 agent");
+      return window.haruyuki.readMemoryFile(agentId, path);
+    },
+    [agentIdRef],
+  );
+
+  /** 写一个记忆文件（**写操作，服务端会自动提交一次 git**）。 */
+  const saveMemoryFile = useCallback(
+    async (path: string, content: string, commitMessage?: string) => {
+      const agentId = agentIdRef.current;
+      if (!agentId) throw new Error("尚未选择 agent");
+      await window.haruyuki.writeMemoryFile(agentId, path, content, commitMessage);
+      await refreshMemory();
+      notice(`记忆文件已保存并提交：${path}`);
+    },
+    [agentIdRef, notice, refreshMemory],
+  );
+
+  /** 删一个记忆文件（**写操作**）。 */
+  const deleteMemoryFile = useCallback(
+    async (path: string, commitMessage?: string) => {
+      const agentId = agentIdRef.current;
+      if (!agentId) throw new Error("尚未选择 agent");
+      await window.haruyuki.deleteMemoryFile(agentId, path, commitMessage);
+      await refreshMemory();
+      notice(`记忆文件已删除：${path}`);
+    },
+    [agentIdRef, notice, refreshMemory],
+  );
+
+  /** 某个文件的提交历史（默认全部文件）。 */
+  const loadMemoryHistory = useCallback(
+    async (path?: string): Promise<MemoryCommit[]> => {
+      const agentId = agentIdRef.current;
+      if (!agentId) return [];
+      return window.haruyuki.memoryHistory(agentId, path);
+    },
+    [agentIdRef],
   );
 
   /** 拉一次模型目录（失败只在面板上体现，不打断对话）。 */
@@ -653,6 +726,13 @@ export function useHaruyuki() {
     currentModelId,
     renameConversation,
     createAgent,
+    memory,
+    memoryBusy,
+    refreshMemory,
+    loadMemoryFile,
+    saveMemoryFile,
+    deleteMemoryFile,
+    loadMemoryHistory,
     /** 往消息流里放一条中性提示（供调用方在合适时机使用）。 */
     notify: (text: string) => notice(text),
     refreshModels,

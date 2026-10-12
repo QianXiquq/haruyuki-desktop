@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AgentPicker } from "./components/AgentPicker";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { ConversationList } from "./components/ConversationList";
+import { MemoryBrowser } from "./components/MemoryBrowser";
 import { MessageList } from "./components/MessageList";
 import { ModelPicker } from "./components/ModelPicker";
 import { RecallPanel } from "./components/RecallPanel";
@@ -78,6 +79,13 @@ export function App() {
     changeModel,
     renameConversation,
     createAgent,
+    memory,
+    memoryBusy,
+    refreshMemory,
+    loadMemoryFile,
+    saveMemoryFile,
+    deleteMemoryFile,
+    loadMemoryHistory,
     notify,
     changeWorkingDirectory,
     listDirectory,
@@ -89,6 +97,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<PermissionMode>("standard");
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   useEffect(() => {
     if (status.state !== "connected") return;
@@ -156,6 +165,15 @@ export function App() {
               onClick={() => void onCreateConversation()}
             >
               <span className="plus">＋</span> 新会话
+            </button>
+            <button
+              type="button"
+              className="sidebar-link"
+              disabled={status.state !== "connected" || !selectedId}
+              title="查看与编辑这个 agent 的 MemFS 记忆文件"
+              onClick={() => setMemoryOpen(true)}
+            >
+              记忆（MemFS）
             </button>
           </div>
 
@@ -318,6 +336,19 @@ export function App() {
           />
         </main>
       </div>
+
+      {memoryOpen ? (
+        <MemoryBrowser
+          memory={memory}
+          busy={memoryBusy}
+          onClose={() => setMemoryOpen(false)}
+          onRefresh={refreshMemory}
+          onLoad={loadMemoryFile}
+          onSave={saveMemoryFile}
+          onDelete={deleteMemoryFile}
+          onHistory={loadMemoryHistory}
+        />
+      ) : null}
     </div>
   );
 }

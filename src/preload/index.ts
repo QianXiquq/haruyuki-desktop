@@ -32,6 +32,24 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
   recallSet: (setting) =>
     ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
+  listMemory: (agentId) =>
+    ipcRenderer.invoke("haruyuki:listMemory", agentId) as ReturnType<HaruyukiApi["listMemory"]>,
+  readMemoryFile: (agentId, path) =>
+    ipcRenderer.invoke("haruyuki:readMemoryFile", agentId, path) as ReturnType<
+      HaruyukiApi["readMemoryFile"]
+    >,
+  writeMemoryFile: (agentId, path, content, commitMessage) =>
+    ipcRenderer.invoke("haruyuki:writeMemoryFile", agentId, path, content, commitMessage) as ReturnType<
+      HaruyukiApi["writeMemoryFile"]
+    >,
+  deleteMemoryFile: (agentId, path, commitMessage) =>
+    ipcRenderer.invoke("haruyuki:deleteMemoryFile", agentId, path, commitMessage) as ReturnType<
+      HaruyukiApi["deleteMemoryFile"]
+    >,
+  memoryHistory: (agentId, path, limit) =>
+    ipcRenderer.invoke("haruyuki:memoryHistory", agentId, path, limit) as ReturnType<
+      HaruyukiApi["memoryHistory"]
+    >,
   createAgent: (name) =>
     ipcRenderer.invoke("haruyuki:createAgent", name) as ReturnType<HaruyukiApi["createAgent"]>,
   renameConversation: (conversationId, summary) =>

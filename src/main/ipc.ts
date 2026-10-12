@@ -99,6 +99,50 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return runRecallCommand(args);
   });
 
+  // ---- 记忆（MemFS）----
+  //
+  // ⚠️ 记忆是**按 agent** 存的，所以每个方法都要 agentId。写操作（write/delete）
+  // 由服务端裁定路径是否逃逸记忆根，我们**不自己拼路径**、只透传。
+  ipcMain.handle("haruyuki:listMemory", (_event, agentId: unknown) => {
+    if (typeof agentId !== "string" || !agentId) throw new Error("listMemory 需要 agentId");
+    return deps.getBridge().listMemory(agentId);
+  });
+
+  ipcMain.handle("haruyuki:readMemoryFile", (_event, agentId: unknown, path: unknown) => {
+    if (typeof agentId !== "string" || !agentId) throw new Error("readMemoryFile 需要 agentId");
+    if (typeof path !== "string" || !path) throw new Error("readMemoryFile 需要 path");
+    return deps.getBridge().readMemoryFile(agentId, path);
+  });
+
+  ipcMain.handle(
+    "haruyuki:writeMemoryFile",
+    (_event, agentId: unknown, path: unknown, content: unknown, commitMessage: unknown) => {
+      if (typeof agentId !== "string" || !agentId) throw new Error("writeMemoryFile 需要 agentId");
+      if (typeof path !== "string" || !path) throw new Error("writeMemoryFile 需要 path");
+      if (typeof content !== "string") throw new Error("writeMemoryFile 的 content 必须是字符串");
+      if (commitMessage !== undefined && typeof commitMessage !== "string") {
+        throw new Error("commitMessage 必须是字符串");
+      }
+      return deps.getBridge().writeMemoryFile(agentId, path, content, commitMessage as string | undefined);
+    },
+  );
+
+  ipcMain.handle(
+    "haruyuki:deleteMemoryFile",
+    (_event, agentId: unknown, path: unknown, commitMessage: unknown) => {
+      if (typeof agentId !== "string" || !agentId) throw new Error("deleteMemoryFile 需要 agentId");
+      if (typeof path !== "string" || !path) throw new Error("deleteMemoryFile 需要 path");
+      return deps.getBridge().deleteMemoryFile(agentId, path, commitMessage as string | undefined);
+    },
+  );
+
+  ipcMain.handle("haruyuki:memoryHistory", (_event, agentId: unknown, path: unknown, limit: unknown) => {
+    if (typeof agentId !== "string" || !agentId) throw new Error("memoryHistory 需要 agentId");
+    if (path !== undefined && typeof path !== "string") throw new Error("path 必须是字符串");
+    if (limit !== undefined && typeof limit !== "number") throw new Error("limit 必须是数字");
+    return deps.getBridge().memoryHistory(agentId, path as string | undefined, limit as number | undefined);
+  });
+
   // ---- 新建 agent ----
   ipcMain.handle("haruyuki:createAgent", (_event, name: unknown) => {
     if (typeof name !== "string" || !name.trim()) {

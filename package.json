@@ -21,7 +21,8 @@
     "check:layout": "electron scripts/layout-check.cjs",
     "check:model": "bun scripts/model-check.ts",
     "check:rename": "bun scripts/rename-check.ts",
-    "check:agent": "bun scripts/agent-check.ts"
+    "check:agent": "bun scripts/agent-check.ts",
+    "check:memory": "bun scripts/memory-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
