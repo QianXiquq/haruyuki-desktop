@@ -120,7 +120,7 @@ body {
 .recall-restart.idle { background: #2a3040; color: var(--fg); font-weight: 500; width: 100%; }
 .recall-line.warn .recall-restart { margin-left: 0; display: block; width: 100%; }
 .chat-head {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 8px 16px; border-bottom: 1px solid var(--border);
 }
 .chat-conversation { color: var(--muted); font-size: 12px; font-family: ui-monospace, "SF Mono", monospace; }
@@ -176,3 +176,42 @@ button.interrupt:disabled { background: #2a2a2e; color: var(--muted); }
 .usage-panel { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .usage-head { color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
 .usage-total { font-size: 12px; color: var(--fg); font-family: ui-monospace, "SF Mono", monospace; }
+
+/* 工作目录（cwd）：GUI 里的"方位感" */
+.cwd { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cwd-label { color: var(--muted); font-size: 11px; }
+.cwd-value {
+  background: #232833; color: var(--fg); font-weight: 400; cursor: pointer; flex: 0 1 auto;
+  font-family: ui-monospace, "SF Mono", monospace; font-size: 11px;
+  padding: 3px 8px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cwd-value:hover:not(:disabled) { background: #2b323f; }
+.cwd-badge {
+  color: var(--muted); font-size: 10px; border: 1px solid var(--border);
+  border-radius: 4px; padding: 0 4px;
+}
+.cwd-editor { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.cwd-row { display: flex; align-items: center; gap: 6px; }
+.cwd-input {
+  flex: 1; min-width: 120px; background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px;
+  font: inherit; font-family: ui-monospace, "SF Mono", monospace; font-size: 11px;
+}
+.cwd-go, .cwd-cancel, .cwd-up {
+  background: #2a3040; color: var(--fg); font-weight: 500; font-size: 11px; padding: 4px 8px;
+}
+.cwd-cancel { background: #2a2a2e; color: var(--muted); }
+.cwd-check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.cwd-browser { border: 1px solid var(--border); border-radius: 6px; padding: 6px; background: #191d24; }
+.cwd-browser-path { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+.cwd-browser-path span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cwd-folders { display: flex; flex-wrap: wrap; gap: 4px; max-height: 140px; overflow-y: auto; }
+.cwd-folder {
+  background: #232833; color: var(--fg); font-weight: 400; font-size: 11px; padding: 3px 7px;
+}
+.cwd-folder:hover { background: #2b323f; }
+.cwd-browser-actions { margin-top: 6px; }
+.cwd-error {
+  color: var(--err); background: #2a1e22; border: 1px solid var(--err);
+  border-radius: 6px; padding: 5px 7px; font-size: 11px;
+}

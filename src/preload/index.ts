@@ -32,6 +32,16 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:recallBuild") as ReturnType<HaruyukiApi["recallBuild"]>,
   recallSet: (setting) =>
     ipcRenderer.invoke("haruyuki:recallSet", setting) as ReturnType<HaruyukiApi["recallSet"]>,
+  getWorkingDirectory: () =>
+    ipcRenderer.invoke("haruyuki:getWorkingDirectory") as ReturnType<
+      HaruyukiApi["getWorkingDirectory"]
+    >,
+  setWorkingDirectory: (path, applyToAll) =>
+    ipcRenderer.invoke("haruyuki:setWorkingDirectory", path, applyToAll) as ReturnType<
+      HaruyukiApi["setWorkingDirectory"]
+    >,
+  listDirectory: (path) =>
+    ipcRenderer.invoke("haruyuki:listDirectory", path) as ReturnType<HaruyukiApi["listDirectory"]>,
   restartServer: () =>
     ipcRenderer.invoke("haruyuki:restartServer") as ReturnType<HaruyukiApi["restartServer"]>,
   onStatus: (handler) => subscribe<ServerStatus>("haruyuki:status", handler),

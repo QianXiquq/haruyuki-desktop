@@ -7,8 +7,10 @@ import type {
   ConversationSummary,
   HaruyukiEvent,
   PermissionMode,
+  DirectoryListing,
   RuntimeScope,
   UsageStats,
+  WorkingDirectorySummary,
 } from "@/shared/ipc-contract";
 
 type Frame = Record<string, unknown> & { type?: string };
@@ -352,6 +354,34 @@ export async function fetchConversationHistory(
   };
 }
 
+/** 去掉结尾斜杠，便于比较路径（服务端可能保留也可能去掉）。 */
+function stripTrailingSlash(path: string): string {
+  return path.replace(/\/+$/, "") || "/";
+}
+
+/**
+ * 判断两个路径是否指同一个目录。
+ *
+ * 为什么不能逐字符比较：服务端会对目录做 `realpath` **归一化**，而那条归一化结果
+ * **无法通过协议拿到**（`list_in_directory` 的 `path` 只是回显请求值）。
+ * 实测：macOS 上发 `/var/folders/...`，回读是 `/private/var/folders/...`
+ * —— 逐字符比较会把**成功的切换报成失败**（真踩过）。
+ *
+ * 所以按**路径边界**接受归一化：相等，或一方是另一方加上前缀的同一路径。
+ * 明显的失败（完全不相干、或仍是旧目录）依然会被判为失败。
+ */
+function sameWorkingDirectory(expected: string, actual: string): boolean {
+  const a = stripTrailingSlash(expected);
+  const b = stripTrailingSlash(actual);
+  if (a === b) return true;
+  return a.endsWith(`/${b.replace(/^\/+/, "")}`) || b.endsWith(`/${a.replace(/^\/+/, "")}`);
+}
+
+/** 读不到工作目录时统一抛这个错，避免各处写法不一致。 */
+function failMissingWorkingDirectory(): never {
+  throw new Error("切换后读不到工作目录");
+}
+
 /** 协议里的数字字段可能是 undefined / 字符串 / null，一律收敛成非负整数。 */
 function int(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -379,6 +409,28 @@ export function parseUsage(delta: Record<string, unknown>): UsageStats {
     reasoningTokens: int(delta.reasoning_tokens),
     contextTokens: int(delta.context_tokens) || int(delta.total_tokens),
   };
+}
+
+/**
+ * 复刻服务端 `getWorkingDirectoryScopeKey()` 的规则。
+ *
+ * ⚠️ 必须与 `src/websocket/listener/cwd.ts` **保持一致**，否则我们会去查一个
+ * 不存在的 key，界面就会谎报"没有覆盖"。服务端的规则是：
+ * - `default` 会话 → `agent:<agentId|__unknown__>::conversation:default`
+ * - 其它会话       → `conversation:<conversationId>`
+ *
+ * （`normalizeConversationId(undefined)` 服务端按 `"default"` 处理。）
+ */
+export function workingDirectoryScopeKey(
+  agentId: string | null | undefined,
+  conversationId: string | null | undefined,
+): string {
+  const normalizedConversation = conversationId?.trim() || "default";
+  if (normalizedConversation === "default") {
+    const normalizedAgent = agentId?.trim() || "__unknown__";
+    return `agent:${normalizedAgent}::conversation:default`;
+  }
+  return `conversation:${normalizedConversation}`;
 }
 
 /** 把服务端的原始帧收敛成 GUI 关心的少量事件。 */
@@ -492,6 +544,129 @@ export class AppServerBridge {
   /** 原始消息帧，仅供自测验证排序用。 */
   async rawConversationMessages(conversationId: string): Promise<unknown[]> {
     return fetchConversationMessages(this.conversationClient(), conversationId);
+  }
+
+  /**
+   * 读当前会话的工作目录。
+   *
+   * ⚠️ **`cwd_map` 里没有条目 ≠ 没有工作目录**：那种情况下实际用的是
+   * `boot_working_directory`。把"没覆盖"当成"没有目录"是这里最容易犯的错。
+   */
+  async getWorkingDirectory(): Promise<WorkingDirectorySummary | null> {
+    const runtime = this.runtime;
+    if (!runtime) return null;
+    const response = (await this.current.request("get_cwd_map", {})) as unknown as {
+      success?: boolean;
+      cwd_map?: Record<string, string>;
+      boot_working_directory?: string | null;
+      error?: string;
+    };
+    if (response.success === false) {
+      throw new Error(`get_cwd_map 失败：${response.error ?? "未知原因"}`);
+    }
+    const scopeKey = workingDirectoryScopeKey(runtime.agent_id, runtime.conversation_id);
+    const boot = response.boot_working_directory ?? null;
+    const override = response.cwd_map?.[scopeKey];
+    return {
+      current: override ?? boot ?? "",
+      boot,
+      overridden: override !== undefined,
+      scopeKey,
+    };
+  }
+
+  /**
+   * 切换当前会话的工作目录。
+   *
+   * 三步，顺序不能换：
+   *  1. **先校验**（`list_in_directory`）—— 目录不存在就当场失败，不把会话切到死路径上
+   *  2. 发 `input` + `payload.cwd`，并**等 `input_accepted` 回执**（不是 fire-and-forget）
+   *  3. **回读 `get_cwd_map` 确认真的生效** —— 服务端把路径 `realpath` 归一化过，
+   *     所以回读值可能与传入值不同；只信回读值
+   *
+   * 之所以要第 3 步：`payload.cwd` 这条通道**没有专门的响应帧**（服务端在
+   * `handleCwdChange` 里校验失败是走错误通道的），不确认就可能"以为改了其实没改"。
+   */
+  async setWorkingDirectory(
+    targetPath: string,
+    applyToAll = false,
+  ): Promise<WorkingDirectorySummary> {
+    const runtime = this.requireRuntime();
+    const desired = targetPath.trim();
+    if (!desired) throw new Error("工作目录不能为空");
+
+    // ① 先用协议校验目录确实存在且可列。
+    const listing = await this.listDirectory(desired);
+    if (!listing.success) {
+      throw new Error(`无法使用该目录：${listing.error ?? desired}`);
+    }
+
+    if (applyToAll) {
+      // 服务端启动目录：影响所有**没有覆盖**的会话。刻意不碰已有覆盖，
+      // 否则会把别的会话的显式选择悄悄改掉。
+      const response = (await this.current.request("set_boot_working_directory", {
+        cwd: listing.path,
+      })) as unknown as { success?: boolean; error?: string };
+      if (response.success === false) {
+        throw new Error(`设置默认工作目录失败：${response.error ?? "未知原因"}`);
+      }
+    } else {
+      this.changeDeviceState(runtime, { cwd: listing.path });
+    }
+
+    // ⚠️ `change_device_state` **没有回执帧**（服务端 `message-router` 那条分支直接
+    // return），所以"已发出"不等于"已生效"。必须**轮询回读**确认。
+    //
+    // 早期版本在这里等一个并不存在的 `input_accepted`，结果必然超时 —— 被 check:cwd 抓到。
+    const wanted = stripTrailingSlash(listing.path);
+    const deadline = Date.now() + 5_000;
+    let after = await this.getWorkingDirectory();
+    if (applyToAll) return after ?? failMissingWorkingDirectory();
+    while (after && stripTrailingSlash(after.current) !== wanted && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      after = await this.getWorkingDirectory();
+    }
+    if (!after) failMissingWorkingDirectory();
+    if (!sameWorkingDirectory(wanted, after.current)) {
+      throw new Error(`目录切换没有生效：期望 ${wanted}，服务端仍报 ${after.current}`);
+    }
+    // 注意：**不**因为"回读值与传入值字面不同"而报错。服务端会 `realpath` 归一化
+    // （macOS 上 `/var/...` → `/private/var/...`），那是成功、不是失败。
+    // 界面上显示的始终是**服务端回读的真实路径**，所以用户看到的是解析后的结果。
+    return after;
+  }
+
+  /**
+   * 发 `change_device_state`（**fire-and-forget**：该命令没有响应帧）。
+   *
+   * ⚠️ 曾经误以为可以走 `input` 的 `payload.cwd` —— **不行**：`input` 的 payload 只接受
+   * `kind === "create_message"`，服务端对其它 kind 一律回 `input_accepted{accepted:false}`
+   * 并报 "Unsupported input payload kind"。
+   *
+   * 权限模式（`payload.mode`）走的是**另一个**入口 `runtime_start { mode }`，两者别混。
+   */
+  private changeDeviceState(runtime: RuntimeScope, payload: Record<string, unknown>): void {
+    this.current.send({
+      type: "change_device_state",
+      runtime,
+      payload,
+    } as unknown as WsProtocolCommand);
+  }
+
+  /** 列一层目录（目录选择器 + 路径校验）。 */
+  async listDirectory(path: string): Promise<DirectoryListing> {
+    const response = (await this.current.request("list_in_directory", { path })) as unknown as {
+      success?: boolean;
+      path?: string;
+      folders?: string[];
+      error?: string;
+    };
+    return {
+      path: str(response.path) || path,
+      folders: Array.isArray(response.folders) ? response.folders.map((f) => str(f)) : [],
+      success: response.success !== false,
+      ...(response.error ? { error: response.error } : {}),
+    };
   }
 
   /**

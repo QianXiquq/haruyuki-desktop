@@ -342,6 +342,43 @@ export function formatUsageDetail(usage: UsageStats): string {
   return lines.join("\n");
 }
 
+/**
+ * 当前会话的工作目录情况。
+ *
+ * ## 数据从哪来
+ *
+ * - `get_cwd_map` 返回**按会话**的覆盖表（`cwd_map`）和一个**服务端启动目录**
+ *   （`boot_working_directory`）。没有覆盖的会话用启动目录。
+ * - scope key 由服务端 `getWorkingDirectoryScopeKey()` 决定：普通会话是
+ *   `conversation:<id>`；`default` 会话是 `agent:<id>::conversation:default`。
+ *   所以我们**不自己拼 key**去查表，而是让主进程按 `agent_id` + `conversation_id` 算。
+ *
+ * ## 为什么这件事对 GUI 特别重要
+ *
+ * TUI 里你在哪个目录启动、`cd` 到哪里，是**肉眼可见**的。GUI 没有这个直觉：
+ * 界面上曾经**完全看不出** agent 在哪工作（实测确认），于是所有涉及文件的任务都是
+ * **盲操作** —— 你对它说"改一下这个函数"，它会去服务端启动目录里找，
+ * 而你不知道那是哪，也改不了。
+ */
+export interface WorkingDirectorySummary {
+  /** 当前会话实际使用的目录（已解析成绝对路径）。 */
+  current: string;
+  /** 服务端启动目录 —— 没有覆盖的会话用它。 */
+  boot: string | null;
+  /** 当前会话是否有自己的覆盖（false 表示用的是 boot）。 */
+  overridden: boolean;
+  /** 归一化后的 scope key，便于诊断。 */
+  scopeKey: string;
+}
+
+/** 目录浏览的一层（走 `list_in_directory`，同时用作"路径是否存在"的校验）。 */
+export interface DirectoryListing {
+  path: string;
+  folders: string[];
+  success: boolean;
+  error?: string;
+}
+
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
@@ -370,6 +407,22 @@ export interface HaruyukiApi {
    * 调 `restartServer()` 换一个进程。调用方要负责把这个前提告诉用户。
    */
   recallSet(setting: RecallSettingValue): Promise<RecallCommandResult>;
+  /** 读当前会话的工作目录（`get_cwd_map`）。 */
+  getWorkingDirectory(): Promise<WorkingDirectorySummary | null>;
+  /**
+   * 切换当前会话的工作目录。
+   *
+   * 走 `input` 命令的 `payload.cwd` —— 与 `payload.mode`（权限模式）**同一条通道**，
+   * 服务端会 `realpath` + `stat` 校验，并**刷新会话上下文**，所以下一轮 agent
+   * 就知道新目录（git 信息等也会更新）。
+   *
+   * `applyToAll` 为 true 时改用 `set_boot_working_directory`（所有**没有覆盖**的会话）。
+   *
+   * @returns 切换后的实际目录。**失败会抛错**，绝不静默假装成功。
+   */
+  setWorkingDirectory(path: string, applyToAll?: boolean): Promise<WorkingDirectorySummary>;
+  /** 列一层目录（用于目录选择器，同时可用于校验路径存在）。 */
+  listDirectory(path: string): Promise<DirectoryListing>;
   /**
    * 重启 app-server。
    *

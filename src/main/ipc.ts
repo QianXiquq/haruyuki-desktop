@@ -99,6 +99,32 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return runRecallCommand(args);
   });
 
+  // ---- 工作目录（cwd）----
+  //
+  // `setWorkingDirectory` 走 `input` + `payload.cwd`（与权限模式同一条通道），
+  // 并在主进程里做三步：先校验目录、等 input_accepted 回执、回读确认。
+  ipcMain.handle("haruyuki:getWorkingDirectory", () => deps.getBridge().getWorkingDirectory());
+
+  ipcMain.handle(
+    "haruyuki:setWorkingDirectory",
+    (_event, path: unknown, applyToAll: unknown) => {
+      if (typeof path !== "string" || !path.trim()) {
+        throw new Error("setWorkingDirectory 需要非空路径");
+      }
+      if (applyToAll !== undefined && typeof applyToAll !== "boolean") {
+        throw new Error("applyToAll 必须是布尔值");
+      }
+      return deps.getBridge().setWorkingDirectory(path, applyToAll === true);
+    },
+  );
+
+  ipcMain.handle("haruyuki:listDirectory", (_event, path: unknown) => {
+    if (typeof path !== "string" || !path.trim()) {
+      throw new Error("listDirectory 需要非空路径");
+    }
+    return deps.getBridge().listDirectory(path);
+  });
+
   ipcMain.handle("haruyuki:restartServer", async () => {
     await deps.restartAppServer();
     // 回传重启后的状态，调用方不必再猜一次。

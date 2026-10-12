@@ -16,7 +16,8 @@
     "check:recall": "bun scripts/recall-check.ts",
     "vendor:sync": "node scripts/materialize-vendor.mjs",
     "check:approval": "bun scripts/approval-check.ts",
-    "check:usage": "bun scripts/usage-check.ts"
+    "check:usage": "bun scripts/usage-check.ts",
+    "check:cwd": "bun scripts/cwd-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

@@ -11,6 +11,7 @@ import type {
   ServerStatus,
   UsageStats,
   UsageTotals,
+  WorkingDirectorySummary,
 } from "@/shared/ipc-contract";
 import {
   EMPTY_USAGE_TOTALS,
@@ -112,6 +113,11 @@ export function useHaruyuki() {
   /** **本次运行**的累计（不落盘，重启清零 —— 口径写在界面上）。 */
   const [usageTotals, setUsageTotals] = useState<UsageTotals>(EMPTY_USAGE_TOTALS);
   const [lastUsage, setLastUsage] = useState<UsageStats | null>(null);
+  /**
+   * 当前会话的工作目录。“看不到 agent 在哪工作”曾是 GUI 最严重的方位感缺失 ——
+   * 涉及文件的任务因此全是盲操作。
+   */
+  const [cwd, setCwd] = useState<WorkingDirectorySummary | null>(null);
   /** 有设置改动尚未通过重启生效 —— 界面要一直挂着提示，直到重启完成。 */
   const [recallDirty, setRecallDirty] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -325,6 +331,39 @@ export function useHaruyuki() {
     }
   }, [notice, recallBusy]);
 
+  /** 读当前会话的工作目录。失败只记一行，不打断对话（它不是核心链路）。 */
+  const refreshWorkingDirectory = useCallback(async () => {
+    try {
+      setCwd(await window.haruyuki.getWorkingDirectory());
+    } catch {
+      setCwd(null);
+    }
+  }, []);
+
+  /**
+   * 切换工作目录。**失败会抛错给界面** —— 绝不静默。
+   *
+   * 换目录之后服务端会刷新会话上下文（agent 下一轮就知道新目录和新的 git 信息），
+   * 所以这里只需要把界面上的值更新掉。
+   */
+  const changeWorkingDirectory = useCallback(
+    async (path: string, applyToAll: boolean) => {
+      const next = await window.haruyuki.setWorkingDirectory(path, applyToAll);
+      setCwd(next);
+      notice(
+        applyToAll
+          ? `默认工作目录已设为 ${next.current}（没有自己目录的会话都会用它）`
+          : `工作目录已切换到 ${next.current}`,
+      );
+    },
+    [notice],
+  );
+
+  /** 列一层目录（目录选择器用）。 */
+  const listDirectory = useCallback(async (path: string) => {
+    return window.haruyuki.listDirectory(path);
+  }, []);
+
   /**
    * 改一个 recall 设置。
    *
@@ -428,6 +467,9 @@ export function useHaruyuki() {
         setLastUsage(null);
         pendingAssistantRef.current = null;
 
+        // 每个会话有自己的工作目录（服务端按会话存），所以切换会话必须重读。
+        await refreshWorkingDirectory();
+
         // 会话的 last_message_at 会变，列表要在进入后重新排一次。
         try {
           await refreshConversations(agentId);
@@ -436,7 +478,7 @@ export function useHaruyuki() {
         }
       });
     },
-    [activeIdRef, fetchHistory, guard, refreshConversations],
+    [activeIdRef, fetchHistory, guard, refreshConversations, refreshWorkingDirectory],
   );
 
   /** 切换 agent：总是开一个新会话（旧会话仍留在列表里，随时可回去）。 */
@@ -548,6 +590,10 @@ export function useHaruyuki() {
     usageByItem,
     usageTotals,
     lastUsage,
+    cwd,
+    refreshWorkingDirectory,
+    changeWorkingDirectory,
+    listDirectory,
     recallDirty,
     restarting,
     applyRecallSetting,

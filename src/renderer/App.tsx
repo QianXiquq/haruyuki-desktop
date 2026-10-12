@@ -4,6 +4,7 @@ import { ApprovalCard } from "./components/ApprovalCard";
 import { ConversationList } from "./components/ConversationList";
 import { MessageList } from "./components/MessageList";
 import { RecallPanel } from "./components/RecallPanel";
+import { WorkingDirectory } from "./components/WorkingDirectory";
 import type { PermissionMode } from "@/shared/ipc-contract";
 import { useHaruyuki } from "./state/use-haruyuki";
 
@@ -37,6 +38,9 @@ export function App() {
     usageByItem,
     usageTotals,
     lastUsage,
+    cwd,
+    changeWorkingDirectory,
+    listDirectory,
     recallDirty,
     restarting,
     applyRecallSetting,
@@ -186,6 +190,12 @@ export function App() {
             <span className="chat-conversation">
               {activeConversationId ?? "（未选择会话）"}
             </span>
+            <WorkingDirectory
+              cwd={cwd}
+              disabled={status.state !== "connected"}
+              onApply={changeWorkingDirectory}
+              onList={listDirectory}
+            />
             <button
               type="button"
               className="reload-history"
