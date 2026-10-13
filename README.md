@@ -186,6 +186,28 @@ Two constraints shape the design:
 - The TUI has features the protocol does not expose, and this client does not try
   to fake them.
 
+## Contributing
+
+This repository is public, so a `pre-commit` hook guards three things that are
+painful to undo once pushed:
+
+1. **A non-noreply commit email.** The address is baked into the commit object
+   permanently and is scrapable; removing it later needs a full history rewrite.
+2. **Machine-specific absolute paths** (`/Users/<name>/…`) leaking into tracked
+   files.
+3. **Credential-shaped strings** in the staged diff.
+
+Git does not enable repository hooks automatically, so turn it on once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook inspects only the lines you are staging, so an already-legitimate file
+does not fail because you touched one line of it. It is a last line of defence,
+not a security scanner: it does not read history, it cannot tell whether some
+prose is private, and `git commit --no-verify` bypasses it.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

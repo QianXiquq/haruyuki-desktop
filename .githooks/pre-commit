@@ -1,0 +1,92 @@
+#!/bin/sh
+# pre-commit：公开仓库的最后一道防线。
+#
+# 挡三件"一旦推上去就很难挽回"的事：
+#   ① 提交邮箱不是 GitHub noreply —— 邮箱写进 commit 对象是**永久**的，而且能爬。
+#      清理要 git filter-repo 改写全部历史 + 强推，别人 fork 的副本仍是旧的。
+#   ② 暂存内容里出现本机绝对路径（含真实用户名）—— 泄漏个人目录结构。
+#   ③ 暂存内容里出现密钥模式。
+#
+# ⚠️ 这不是安全扫描器，只做三个具体检查：
+#   - **不扫历史**（只看本次提交；已进历史的问题它管不了）
+#   - **不做语义判断**（它不知道某个文件里有没有你的私事 —— 那仍需人工判断）
+#   - **可以被绕过**：`git commit --no-verify`
+#
+# 想绕过某一条时，优先用下面的白名单机制，而不是 --no-verify。
+set -u
+
+red()   { printf '\033[31m%s\033[0m\n' "$1"; }
+yellow(){ printf '\033[33m%s\033[0m\n' "$1"; }
+green() { printf '\033[32m%s\033[0m\n' "$1"; }
+fail=0
+
+# 只检查**新增/修改行**：一个早就合法的文件不该因为被改了一行就整体报错。
+# 用 `git diff --cached -U0` 拿到带 + 号的暂存改动。
+staged_added_lines() {
+  git diff --cached -U0 --diff-filter=ACMR -- . 2>/dev/null | grep '^+' | grep -v '^+++'
+}
+
+# ---------------------------------------------------------------- ① 邮箱
+echo "▸ 检查提交邮箱…"
+email="$(git config user.email 2>/dev/null || echo '')"
+case "$email" in
+  *@users.noreply.github.com)
+    green "  ✓ $email"
+    ;;
+  "")
+    red "  ✗ 没有配置 user.email —— Git 会拒绝提交或用一个猜出来的地址"
+    yellow "    修： git config user.email '<你的ID>+<用户名>@users.noreply.github.com'"
+    fail=1
+    ;;
+  *)
+    red "  ✗ 邮箱不是 GitHub noreply：$email"
+    yellow "    公开仓库里这个地址会永久留在 commit 历史里，而且能爬。"
+    yellow "    修： git config user.email '<你的ID>+<用户名>@users.noreply.github.com'"
+    yellow "        （在 GitHub → Settings → Emails 里能找到你的 noreply 地址）"
+    yellow "    确实要用真实邮箱时： git commit --no-verify"
+    fail=1
+    ;;
+esac
+
+# ---------------------------------------------------------------- ② 本机路径
+echo "▸ 检查本机绝对路径…"
+user_name="$(whoami 2>/dev/null || echo '')"
+# 同时拦「/Users/任意名字」和「/home/任意名字」：前者可能不是当前用户，
+# 但只要出现在这个仓库里就值得人工看一眼。
+paths="$(staged_added_lines | grep -nE '/(Users|home)/[A-Za-z0-9._-]+' || true)"
+if [ -n "$paths" ]; then
+  red "  ✗ 暂存内容里出现绝对路径（含用户名）："
+  echo "$paths" | head -10 | sed 's/^/      /'
+  [ "$(echo "$paths" | wc -l | tr -d ' ')" -gt 10 ] && yellow "      …以及更多"
+  yellow "    这个仓库要公开，个人目录名不该进去。"
+  yellow "    确实需要（比如文档举例）时： git commit --no-verify"
+  fail=1
+else
+  green "  ✓ 没有本机绝对路径"
+fi
+
+# ---------------------------------------------------------------- ③ 密钥
+echo "▸ 检查密钥模式…"
+# 模式刻意取得"偏严"：宁可误报让人看一眼，也不要漏。
+# 排除明显是占位符/文档的写法（xxx / YOUR_ / <...> / example）。
+secrets="$(staged_added_lines \
+  | grep -nEi 'sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|(api[_-]?key|secret|password|token)["'"'"']?\s*[:=]\s*["'"'"'][A-Za-z0-9_\-]{16,}' \
+  | grep -viE 'YOUR_|<[a-z_]+>|xxx|placeholder|example|redacted|\*\*\*' || true)"
+if [ -n "$secrets" ]; then
+  red "  ✗ 暂存内容里疑似有密钥："
+  echo "$secrets" | head -10 | sed 's/^/      /'
+  yellow "    如果确认是假警报（文档举例等），用 git commit --no-verify"
+  fail=1
+else
+  green "  ✓ 没有密钥模式"
+fi
+
+echo
+if [ "$fail" -ne 0 ]; then
+  red "提交已被 pre-commit 拦下。"
+  yellow "逐条修掉上面的问题；确认无碍后再提交。"
+  yellow "跳过检查（慎用）： git commit --no-verify"
+  exit 1
+fi
+green "pre-commit 检查通过。"
+exit 0
