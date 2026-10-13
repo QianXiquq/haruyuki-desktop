@@ -11,6 +11,7 @@ import { WorkingDirectory } from "./components/WorkingDirectory";
 import type { PermissionMode } from "@/shared/ipc-contract";
 import { cacheHitRate, formatTokens } from "@/shared/ipc-contract";
 import { useHaruyuki } from "./state/use-haruyuki";
+import { useAutoScroll } from "./state/use-auto-scroll";
 
 const PERMISSION_LABEL: Record<PermissionMode, string> = {
   standard: "标准",
@@ -123,6 +124,14 @@ export function App() {
     void restoreLastConversation(firstAgentId, mode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstAgentId, restoreLastConversation, status.state]);
+
+  /**
+   * 贴底自动滚动。
+   *
+   * 原先**完全没有自动滚动**，所以流式时新内容停在视野外 —— 用户感知就是
+   * "滚不到底"（实测容器本身能滚到底，缺的只是跟随）。
+   */
+  const threadScroll = useAutoScroll(items, activeConversationId);
 
   async function onSelectAgent(agentId: string): Promise<void> {
     setSelectedId(agentId);
@@ -269,7 +278,7 @@ export function App() {
             </div>
           </header>
 
-          <div className="thread">
+          <div className="thread" ref={threadScroll.ref as React.RefObject<HTMLDivElement>}>
             <MessageList items={items} loading={loadingHistory} usageByItem={usageByItem} />
           </div>
 
