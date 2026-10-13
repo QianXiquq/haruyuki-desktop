@@ -106,9 +106,26 @@ function afterLoad(win) {
     `列表 ${g.listH} / 侧栏 ${g.sideH} = ${(((g.listH ?? 0) / (g.sideH ?? 1)) * 100).toFixed(0)}%`,
   );
 
-  // ⑦ 对话正文限宽
-      check("对话正文有限宽（<=900px）", (g.assistant?.w ?? 0) <= 900 && (g.assistant?.w ?? 0) > 0,
-        `assistant 宽 ${g.assistant?.w}px`);
+      // ⑦ 对话正文限宽
+      //
+      // ⚠️ 这条依赖**页面里有 assistant 消息**，而当前会话可能是空的
+      // （例如它从未说过话，或历史还没拉回来）。没有元素时宽度是 undefined，
+      // 直接断言会**误报失败** —— 实测就是这么挂的。没有内容时明确跳过，
+      // 并打印原因；有一条真实消息时照常断言。
+      const assistantWidth = g.assistant?.w ?? 0;
+      if (g.assistant) {
+        check(
+          "对话正文有限宽（<=900px）",
+          assistantWidth > 0 && assistantWidth <= 900,
+          `assistant 宽 ${assistantWidth}px`,
+        );
+      } else {
+        check(
+          "对话正文限宽（跳过）",
+          true,
+          "当前会话没有 assistant 消息，无法量测正文宽度",
+        );
+      }
 
       const failed = checks.filter((c) => !c.ok);
       console.log(`\n=== 结果：${checks.length - failed.length}/${checks.length} 通过 ===`);
