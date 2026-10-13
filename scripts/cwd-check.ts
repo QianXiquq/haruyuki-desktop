@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
 import { AppServerBridge, workingDirectoryScopeKey } from "@/main/app-server";
-import { startServer } from "@/main/server-process";
+import { startServer, defaultWorkingDirectory } from "@/main/server-process";
 import { describeCheckServer, resolveCheckServerCommand } from "./server-command";
 import { collectAssistantText } from "./event-text";
 import type { HaruyukiEvent } from "@/shared/ipc-contract";
@@ -153,3 +153,44 @@ if (failed.length > 0) {
 }
 bridge.close();
 server.stop();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⑦ 工作区隔离（回归测试）
+//
+// 来历：服务端的 `boot_working_directory` 兜底值是它自己的 `process.cwd()`，
+// 而我们的 spawn 没设 cwd —— 于是**在哪个目录启动应用，agent 的工作区就是哪个目录**。
+// 实测后果：从本仓库启动时，agent 的工作区变成**这个项目本身**，它能翻到本仓库的
+// git 历史与 node_modules（1.2GB），"打个招呼"就演变成探索代码库、烧掉上百 k token。
+// ═══════════════════════════════════════════════════════════════════════════
+console.log("\n=== ⑦ 工作区隔离 ===");
+
+const projectRoot = process.cwd();
+/** ⚠️ 用路径边界比较，不用字符串相等 —— macOS 会把 /tmp 规范成 /private/tmp。 */
+const insideProject = (p?: string): boolean =>
+  Boolean(p && (p === projectRoot || p.startsWith(projectRoot + "/")));
+
+check(
+  "defaultWorkingDirectory() 不指向本项目（不继承启动位置）",
+  !insideProject(defaultWorkingDirectory()),
+  `默认值 = ${defaultWorkingDirectory()}`,
+);
+check(
+  "默认值可用（存在且是绝对路径）",
+  Boolean(defaultWorkingDirectory()) && defaultWorkingDirectory().startsWith("/"),
+  defaultWorkingDirectory(),
+);
+
+// 起一个显式 cwd 的服务端，确认它真的被采纳
+const isolatedServer = await startServer({ command: resolveCheckServerCommand(), cwd: "/tmp" });
+const isolatedBridge = new AppServerBridge(() => {});
+await isolatedBridge.connect(isolatedServer.wsUrl, WebSocket);
+const isoAgents = await isolatedBridge.listAgents();
+await isolatedBridge.startRuntime(isoAgents[0]!.id, "standard");
+const isoWd = await isolatedBridge.getWorkingDirectory();
+check(
+  "显式传入的 cwd 被采纳（agent 不再看到本项目）",
+  !insideProject(isoWd?.current),
+  `agent 工作目录 = ${isoWd?.current}`,
+);
+isolatedBridge.close();
+isolatedServer.stop();

@@ -17,6 +17,18 @@ cd "$HERE"
 # bun 常在 ~/.bun/bin，而它通常不在非交互 shell 的 PATH 里。
 export PATH="$HOME/.bun/bin:$PATH"
 
+# ⚠️ 隔离 agent 的工作区。
+#
+# 服务端的 `boot_working_directory` 兜底值是它的 `process.cwd()`，所以**在哪个目录
+# 启动应用，agent 的工作区就是哪个目录**。实测的坑：从本仓库启动时，agent 的工作区
+# 变成了**这个项目本身** —— 它能翻到本仓库的 git 历史与 node_modules（1.2GB），
+# 于是"打个招呼"就演变成探索代码库、烧掉上百 k token。
+#
+# 这里显式指到一个专用工作区，避免把"应用自己的源码"当成"用户的工作材料"。
+# 想换位置：HARUYUKI_WORKDIR=/somewhere bash scripts/launch.sh
+export HARUYUKI_WORKDIR="${HARUYUKI_WORKDIR:-$HOME/haruyuki-workspace}"
+mkdir -p "$HARUYUKI_WORKDIR" 2>/dev/null
+
 # ⚠️ 这个变量必须清掉：如果为 1，Electron 会以 Node 身份运行，
 # 于是 `import { BrowserWindow } from "electron"` 报
 # "does not provide an export named 'BrowserWindow'" 而直接崩掉。
@@ -54,5 +66,6 @@ if [ "$WANT_BUILD" = "1" ] || { [ ! -f out/main/index.mjs ] && [ "$WANT_BUILD" =
   echo "▸ 构建完成。"
 fi
 
+echo "▸ agent 工作区: $HARUYUKI_WORKDIR"
 echo "▸ 启动 haruyuki-desktop…（关掉窗口即退出；本终端会一直占着）"
 exec "$ELECTRON" .

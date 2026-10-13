@@ -95,6 +95,19 @@ export interface StartedServer {
  * 真实 URL 从 stdout 的 `WebSocket: ws://…` 行解析。
  */
 export interface StartServerOptions {
+  /**
+   * 服务端进程的工作目录 —— **它决定了 agent 的 `boot_working_directory`**。
+   *
+   * ⚠️ 必须显式设置，不能让 spawn 继承调用者的 cwd。上游的兜底值是
+   * `process.cwd()`（`protocol-outbound.ts`），所以**在哪个目录启动应用，agent 的
+   * 工作区就是哪个目录**。实测的后果：从 `~/haruyuki-desktop` 启动时，agent 的
+   * 工作区变成了**这个项目本身** —— 它能翻到本仓库的 git 历史、`node_modules`
+   * （1.2GB），于是"打个招呼"就变成去探索代码库、烧掉大量 token。
+   *
+   * 默认取 `$HARUYUKI_WORKDIR`，否则**用户主目录**（一个不会误导 agent 的中性位置）。
+   * 每个会话仍可在界面上单独覆盖（`WorkingDirectory` 组件 → `change_device_state`）。
+   */
+  cwd?: string;
   /** 等待"监听地址"上报的上限。 */
   timeoutMs?: number;
   /**
@@ -102,6 +115,18 @@ export interface StartServerOptions {
    * 避免"以为测了 0.2.0、实际测的是旧 checkout"。
    */
   command?: ServerCommand;
+}
+
+/**
+ * 服务端进程的工作目录 = agent 的初始工作区。
+ *
+ * 顺序：`$HARUYUKI_WORKDIR` → 用户主目录。
+ * **绝不**回退到 `process.cwd()`：那正是"agent 把应用自己的仓库当成工作区"的原因。
+ */
+export function defaultWorkingDirectory(): string {
+  const fromEnv = process.env.HARUYUKI_WORKDIR?.trim();
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  return homedir();
 }
 
 export function startServer(
@@ -112,6 +137,7 @@ export function startServer(
   const timeoutMs = options.timeoutMs ?? 20_000;
   const { command, args } = options.command ?? resolveServerCommand();
   const child = spawn(command, [...args, "--listen"], {
+    cwd: options.cwd ?? defaultWorkingDirectory(),
     stdio: ["ignore", "pipe", "pipe"],
     // ⚠️ 在 Electron 里 process.execPath 是 **Electron 自己**，不是 node。
     // 设置 ELECTRON_RUN_AS_NODE=1 才能让它以 Node 身份运行 haruyuki.js。
