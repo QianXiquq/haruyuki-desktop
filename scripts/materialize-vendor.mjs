@@ -26,7 +26,7 @@ writeFileSync(
   `${JSON.stringify(
     {
       name: "haruyuki",
-      version: "0.1.3-vendored",
+      version: "0.2.0-vendored",
       private: true,
       type: "module",
       exports: {
