@@ -1,79 +1,75 @@
 # haruyuki-desktop
 
-An **unofficial desktop GUI** for [haruyuki](https://github.com/TZYLT/haruyuki),
-the local-first terminal runtime for stateful agents.
+**中文 · [English](README.en.md)**
 
-haruyuki itself is a TUI. This is a separate Electron client that speaks the same
-app-server WebSocket protocol, so you get the same agent, the same memory and the
-same conversations with a graphical interface — windows, a sidebar, a mouse.
+[haruyuki](https://github.com/TZYLT/haruyuki) 的**非官方桌面客户端**。haruyuki 本身是一个
+local-first 的终端运行时，用来跑有状态、长期存活的 agent。
 
-> **Not affiliated with the haruyuki project.** This is an independent client.
-> See [NOTICE](NOTICE).
+haruyuki 本体是 TUI。这是一个独立的 Electron 客户端，说同一套 app-server WebSocket 协议 ——
+所以 agent、记忆、会话都是同一份，只是换成了图形界面：窗口、侧栏、鼠标。
+
+> **与 haruyuki 项目无关联。** 这是一个独立客户端，不是官方出品。
+> 详见 [NOTICE](NOTICE)。
 
 ---
 
-## What it gives you
+## 它能做什么
 
-The goal is parity with the TUI for day-to-day use, minus the parts the protocol
-does not expose.
+目标是在日常使用上对齐 TUI，除了协议本身不暴露的那些部分。
 
-| Area | What this client does |
+| 方面 | 这个客户端能做什么 |
 |---|---|
-| Conversations | list, open, rename, **delete** (with a typed confirmation), search by title |
-| Messages | streaming output, reasoning shown separately, tool calls and results, approval prompts |
-| Agents | list, switch, create |
-| Models | list and switch, including reasoning-effort tiers |
-| Working directory | show and change, per conversation |
-| Memory (MemFS) | browse, edit, delete memory files, view commit history |
-| Recall | index status, build the index, probe searches, all ten settings, server restart |
-| Usage | per-turn tokens, and the running total for the conversation — **including history read from disk** |
+| 会话 | 列表、打开、改名、**删除**（需逐字输入确认）、按标题搜索 |
+| 消息 | 流式输出、推理单独展示、工具调用与结果、审批弹窗 |
+| Agent | 列表、切换、新建 |
+| 模型 | 列表与切换，含推理档位 |
+| 工作目录 | 展示与修改，按会话独立 |
+| 记忆（MemFS） | 浏览、编辑、删除记忆文件，查看提交历史 |
+| 召回（recall） | 索引状态、构建索引、试搜、全部十项设置、重启服务端 |
+| 用量 | 每轮 token，以及该会话的累计 —— **含从磁盘读出的历史** |
 
-Everything is measured rather than assumed: 16 check scripts under `scripts/`
-assert the behaviour that matters, including the ones that used to fail silently.
+这里的东西都是**量出来的，不是猜的**：`scripts/` 下有 15 个自测脚本，断言真正重要的行为，
+其中一些正是过去**会静默失败**的地方。
 
-## Requirements
+## 环境要求
 
-- **macOS** — developed and tested on macOS (Apple Silicon). Nothing is
-  macOS-specific in the code beyond packaging, but no other platform has been
-  tried.
-- **[bun](https://bun.sh)** — used for the build tooling and the check scripts.
-- **Node.js 20+** — only if you run the check scripts outside bun.
-- **haruyuki 0.2.0 or newer**, installed separately (see below). The app-server
-  protocol version is `1` in both 0.1.3 and 0.2.0, so an older runtime will
-  connect — but this client is developed and verified against **0.2.0**, and the
-  status bar shows the runtime version so you can tell which one you are on.
+- **macOS** —— 在 macOS（Apple Silicon）上开发和验证。除了打包之外代码里没有 macOS 特有的东西，
+  但**没有在别的平台上试过**。
+- **[bun](https://bun.sh)** —— 构建工具链与自测脚本用它。
+- **Node.js 20+** —— 只在你不通过 bun 跑自测脚本时需要。
+- **haruyuki 0.2.0 或更新**，需要单独安装（见下）。app-server 协议版本在 0.1.3 与 0.2.0
+  都是 `1`，所以旧版运行时也能连上 —— 但本客户端是**针对 0.2.0 开发和验证**的；
+  底部状态条会显示运行时版本，你能一眼看出自己连的是哪个。
 
-### Install haruyuki
+### 安装 haruyuki
 
 ```bash
 npm install -g haruyuki
 ```
 
-## Point this client at haruyuki
+## 让本客户端找到 haruyuki
 
-The app needs to know how to launch the haruyuki runtime. It resolves the command
-in this order, first match wins:
+应用需要知道怎么启动 haruyuki 运行时。解析顺序如下，**先匹配到的胜出**：
 
-| Order | Source | Meaning |
+| 顺序 | 来源 | 含义 |
 |---|---|---|
-| 1 | `HARUYUKI_SERVER_CMD` | A full command line. Must include the `server` subcommand. |
-| 2 | `HARUYUKI_BIN` | Path to the executable, or to a `.js` entry point. |
-| 3 | `HARUYUKI_REPO` | A haruyuki source checkout; its build artifact `<dir>/haruyuki.js` is used. |
-| 4 | `~/haruyuki-upstream` | A reference checkout, if that build artifact exists. |
-| 5 | `PATH` + common locations | A globally installed `haruyuki`. |
-| 6 | — | `<project>/node_modules/.bin/haruyuki` if present. |
+| 1 | `HARUYUKI_SERVER_CMD` | 完整命令行，**必须自带 `server` 子命令** |
+| 2 | `HARUYUKI_BIN` | 可执行文件路径，或 `.js` 入口路径 |
+| 3 | `HARUYUKI_REPO` | haruyuki 源码检出目录，取其构建产物 `<dir>/haruyuki.js` |
+| 4 | `~/haruyuki-upstream` | 参考检出目录（该构建产物存在时） |
+| 5 | `PATH` + 常见安装目录 | 全局安装的 `haruyuki` |
+| 6 | — | `<项目>/node_modules/.bin/haruyuki`（存在时） |
 
-A **global `npm install -g haruyuki` is found automatically.** Step 5 searches
-`PATH` *and* a set of well-known directories — `/opt/homebrew/bin`,
-`/usr/local/bin`, `~/.bun/bin`, `~/.local/bin`, `~/.npm-global/bin`,
-`~/.volta/bin` — because an app started from Finder or the Dock usually has a
-`PATH` of just `/usr/bin:/bin:/usr/sbin:/sbin` and would otherwise never see a
-Homebrew or npm-global install.
+**全局 `npm install -g haruyuki` 会被自动找到。** 第 5 步同时搜索 `PATH`
+**和**一组常见安装目录 —— `/opt/homebrew/bin`、`/usr/local/bin`、`~/.bun/bin`、
+`~/.local/bin`、`~/.npm-global/bin`、`~/.volta/bin`。之所以不只靠 `PATH`：
+**从 Finder 或 Dock 启动的应用，`PATH` 通常只有 `/usr/bin:/bin:/usr/sbin:/sbin`**，
+不主动搜那几处就永远看不到 Homebrew 或 npm 全局装的 haruyuki。
 
-If you have several haruyuki installs and want a specific one, set
-`HARUYUKI_REPO` or `HARUYUKI_BIN` — the earlier steps win.
+如果你装了多个 haruyuki、想指定其中一个，就设 `HARUYUKI_REPO` 或 `HARUYUKI_BIN` ——
+靠前的步骤优先。
 
-From a source checkout of haruyuki, build it once and point at the directory:
+从 haruyuki 源码检出构建一次，然后指向那个目录：
 
 ```bash
 git clone https://github.com/TZYLT/haruyuki.git ~/haruyuki
@@ -81,137 +77,124 @@ cd ~/haruyuki && npm install && npm run build
 export HARUYUKI_REPO="$HOME/haruyuki"
 ```
 
-`scripts/setup-server.sh` automates the clone-and-build into
-`~/haruyuki-upstream` if you would rather not do it by hand.
+`scripts/setup-server.sh` 可以把「克隆 + 构建到 `~/haruyuki-upstream`」自动化，不想手敲就用它。
 
-## Build and run
+## 构建与运行
 
 ```bash
 git clone https://github.com/QianXiquq/haruyuki-desktop.git
 cd haruyuki-desktop
-bun install            # also materializes vendor/ via the postinstall hook
+bun install            # postinstall 会顺便生成 vendor/
 bun run build
 ```
 
-Then start it with the launcher:
+然后用启动脚本起：
 
 ```bash
-bash scripts/launch.sh          # rebuilds first if src/ is newer than out/
-bash scripts/launch.sh --build  # force a rebuild
+bash scripts/launch.sh          # 源码比 out/ 新时会先自动重建
+bash scripts/launch.sh --build  # 强制重建
 ```
 
-Or double-click `启动 haruyuki-desktop.command` in Finder.
+或者在 Finder 里双击 **`启动 haruyuki-desktop.command`**。
 
-The launcher handles three things that are easy to get wrong by hand:
+启动脚本替你处理了三件**手工很容易弄错**的事：
 
-- `bun` is often only on `PATH` at `~/.bun/bin`.
-- `ELECTRON_RUN_AS_NODE` must be unset. If it is `1`, Electron runs as Node and
-  the app dies at startup with `does not provide an export named 'BrowserWindow'`.
-- The agent's **working directory** is set explicitly. The server otherwise
-  inherits whatever directory you launched from, which means launching from the
-  project itself hands the agent this repository — its git history and its
-  `node_modules` — as its workspace. The launcher points it at
-  `$HARUYUKI_WORKDIR`, defaulting to `~/haruyuki-workspace`.
+- **`bun` 常常只在 `~/.bun/bin`**，不在默认 `PATH` 里。
+- **`ELECTRON_RUN_AS_NODE` 必须清掉**。它为 `1` 时 Electron 会以 Node 身份运行，
+  应用启动即崩，报 `does not provide an export named 'BrowserWindow'`。
+- **agent 的工作目录是显式设置的**。否则服务端会继承「你启动时所在的目录」——
+  从项目目录启动，就等于把**这个仓库本身**（连同它的 git 历史与 `node_modules`）
+  交给 agent 当工作区。启动脚本把它指向 `$HARUYUKI_WORKDIR`，默认 `~/haruyuki-workspace`。
 
-To run it without the launcher:
+不用启动脚本的话：
 
 ```bash
 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .
 ```
 
-## Checks
+## 自测
 
 ```bash
 bun run typecheck
 
-bun run check:integration   # connect, start a runtime, send a message
-bun run check:approval      # approval round trip, tool execution, interrupt
-bun run check:conversations # history ordering, classification, recall stripping
-bun run check:recall        # the recall CLI, its parser, and the flood guards
-bun run check:usage         # token accounting, pure functions
-bun run check:cwd           # working directory, including the isolation assertions
-bun run check:model         # model catalog shape and switching
-bun run check:rename        # conversation rename and server-side title search
-bun run check:agent         # agent listing and creation
-bun run check:memory        # MemFS read/write, frontmatter rules, cleanup
-bun run check:search        # title search and the recall probe
-bun run check:perf          # streaming load: event count must not track text length
-bun run check:delete        # conversation deletion, path escapes, history tokens
-bun run check:resolve       # how the haruyuki runtime is located (no server needed)
-bun run check:layout        # layout measurements (Electron; see the note below)
+bun run check:integration   # 连接 → 启动 runtime → 发消息
+bun run check:approval      # 审批往返、工具执行、中断
+bun run check:conversations # 历史顺序、分类、recall 注入块剥离
+bun run check:recall        # recall CLI、解析器、防雪崩护栏
+bun run check:usage         # token 统计（纯函数）
+bun run check:cwd           # 工作目录，含隔离断言
+bun run check:model         # 模型目录结构与切换
+bun run check:rename        # 会话改名与服务端标题搜索
+bun run check:agent         # agent 列表与新建
+bun run check:memory        # MemFS 读写、frontmatter 规则、清理
+bun run check:search        # 标题搜索与 recall 试搜
+bun run check:perf          # 流式负载：事件数不得随文本长度增长
+bun run check:delete        # 会话删除、路径逃逸、历史 token
+bun run check:resolve       # haruyuki 运行时的定位方式（不需要服务端）
+bun run check:layout        # 布局量测（需要 Electron，见下方说明）
 ```
 
-Some of these create real data — `check:agent` creates and deletes an agent,
-`check:memory` writes and removes a memory file, `check:delete` creates and
-removes a conversation, `check:recall` changes settings and restores them. They
-assert their own cleanup, because leaving debris behind is worse than failing.
+其中一些会**产生真实数据** —— `check:agent` 会建一个 agent 再删，
+`check:memory` 会写一个记忆文件再删，`check:delete` 会建一个会话再删，
+`check:recall` 会改设置再还原。它们都**断言自己清理干净** ——
+留下垃圾比失败更糟。
 
-> `check:layout` must be launched **through the app's own entry point**
-> (`HARUYUKI_APP_ENTRY=out/main/index.mjs`). A bare window that loads the renderer
-> has no conversation data, and every assertion would pass vacuously.
+> `check:layout` 必须**通过应用自己的入口**启动
+> （`HARUYUKI_APP_ENTRY=out/main/index.mjs`）。直接开一个裸窗口加载渲染进程是拿不到会话数据的，
+> 那样**每条断言都会空洞地通过**。
 
-## Architecture
+## 架构
 
 ```
-src/main/       Node side. Owns the WebSocket, the filesystem, and child processes.
-  app-server.ts     protocol client; also the pure helpers that shape its data
-  server-process.ts launching the runtime, and working-directory resolution
-  conversation-store.ts  reading/deleting the local conversation store directly
-  recall.ts         the `haruyuki recall` subcommands
-  ipc.ts            the whitelisted IPC surface
-src/preload/    contextBridge bridge; the renderer gets exactly this, nothing more
-src/renderer/   React UI
-src/shared/     types and pure helpers shared by both sides
-vendor/haruyuki/ generated type declarations (see NOTICE)
+src/main/       Node 侧。持有 WebSocket、文件系统与子进程。
+  app-server.ts     协议客户端；也放塑形协议数据的纯函数
+  server-process.ts 启动运行时，以及工作目录的解析
+  conversation-store.ts  直接读写/删除本地会话存储
+  recall.ts         haruyuki recall 子命令
+  ipc.ts            白名单化的 IPC 表面
+src/preload/    contextBridge 桥；渲染进程只能拿到这里给的东西，多一分都没有
+src/renderer/   React 界面
+src/shared/     两侧共用的类型与纯函数
+vendor/haruyuki/ 生成出来的类型声明（见 NOTICE）
 ```
 
-Two constraints shape the design:
+两条约束决定了整体设计：
 
-- **The renderer never talks to the server directly.** It has no Node access and
-  no socket; everything goes through a whitelisted IPC surface. The server also
-  rejects any WebSocket handshake carrying an `Origin` header, so a browser-side
-  connection would not work even if it were allowed.
-- **Streaming is batched in the main process.** The server emits one delta per
-  token; forwarding each one cost ~242 IPC events for a short reply and, combined
-  with per-event re-rendering, pinned a CPU core. Deltas are now coalesced into
-  one event per ~50 ms. `check:perf` fails if that regresses.
+- **渲染进程从不直接和服务端通信。** 它没有 Node 权限、也没有 socket，一切都走白名单化的 IPC；
+  而服务端本身会拒绝任何带 `Origin` 头的 WebSocket 握手，所以就算允许，浏览器侧连接也连不上。
+- **流式增量在主进程做批处理。** 服务端**逐 token** 推 delta，逐个转发时一轮短回复就要
+  ~242 次 IPC 事件，叠加「每次事件全量重渲染」，直接把一个 CPU 核吃满。现在增量按
+  **每 ~50ms 合并成一个事件**。这条一旦退化，`check:perf` 会失败。
 
-## Known limitations
+## 已知限制
 
-- **Not signed or notarized.** No prebuilt binaries are published yet; build from
-  source. If you package it yourself, macOS Gatekeeper will block the unsigned
-  app and you will need to allow it manually.
-- **Cost is not displayed.** The server does not send cost over the protocol.
-  The on-disk records do carry it, but it is deliberately not shown — only tokens.
-- The TUI has features the protocol does not expose, and this client does not try
-  to fake them.
+- **未签名、未公证。** 目前**没有发布预编译安装包**，需要自己从源码构建。
+  如果你自己打包，macOS Gatekeeper 会拦下未签名的应用，需要手动放行。
+- **不显示成本。** 服务端不通过协议下发成本。磁盘记录里其实有，但**刻意不展示** —— 只显示 token。
+- TUI 有些功能协议没有暴露，本客户端**不会假装支持**。
 
-## Contributing
+## 参与贡献
 
-This repository is public, so a `pre-commit` hook guards three things that are
-painful to undo once pushed:
+这个仓库是公开的，所以有一个 `pre-commit` 钩子守着三件「一旦推上去就很难挽回」的事：
 
-1. **A non-noreply commit email.** The address is baked into the commit object
-   permanently and is scrapable; removing it later needs a full history rewrite.
-2. **Machine-specific absolute paths** (`/Users/<name>/…`) leaking into tracked
-   files.
-3. **Credential-shaped strings** in the staged diff.
+1. **提交邮箱不是 GitHub noreply。** 邮箱会被**永久**写进 commit 对象，而且能被爬取；
+   事后清理需要**改写全部历史**。
+2. **本机绝对路径**（`/Users/<name>/…`）泄漏进被跟踪文件。
+3. **暂存差异里出现密钥形态的字符串。**
 
-Git does not enable repository hooks automatically, so turn it on once per clone:
+Git **不会自动启用仓库钩子**，所以每台机器要开一次：
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-The hook inspects only the lines you are staging, so an already-legitimate file
-does not fail because you touched one line of it. It is a last line of defence,
-not a security scanner: it does not read history, it cannot tell whether some
-prose is private, and `git commit --no-verify` bypasses it.
+钩子只看你**暂存的那几行**，所以改了一个本来就合法的文件的一行并不会让它整体报错。
+它是**最后一道防线，不是安全扫描器**：它不读历史、判断不出某段文字是否私密，
+而且 `git commit --no-verify` 可以绕过它。
 
-## License
+## 许可
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0 —— 见 [LICENSE](LICENSE)。
 
-Third-party attributions are in [NOTICE](NOTICE) and
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The haruyuki runtime is not
-bundled; install it separately.
+第三方归属见 [NOTICE](NOTICE) 与 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+**haruyuki 运行时不随本仓库分发**，请单独安装。
