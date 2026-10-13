@@ -56,6 +56,14 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:memoryHistory", agentId, path, limit) as ReturnType<
       HaruyukiApi["memoryHistory"]
     >,
+  deleteConversation: (conversationId) =>
+    ipcRenderer.invoke("haruyuki:deleteConversation", conversationId) as ReturnType<
+      HaruyukiApi["deleteConversation"]
+    >,
+  conversationTitle: (conversationId) =>
+    ipcRenderer.invoke("haruyuki:conversationTitle", conversationId) as ReturnType<
+      HaruyukiApi["conversationTitle"]
+    >,
   createAgent: (name) =>
     ipcRenderer.invoke("haruyuki:createAgent", name) as ReturnType<HaruyukiApi["createAgent"]>,
   renameConversation: (conversationId, summary) =>

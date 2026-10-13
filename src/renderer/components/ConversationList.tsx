@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmDelete } from "./ConfirmDelete";
 import type { ConversationSummary } from "@/shared/ipc-contract";
 
 interface Props {
@@ -8,6 +9,8 @@ interface Props {
   onSelect: (conversationId: string) => void;
   /** 改名。传空字符串 = 清除自定义标题（退回自动推导）。 */
   onRename: (conversationId: string, summary: string) => Promise<void>;
+  /** 删除（**不可逆**）。确认弹窗要求逐字输入标题。 */
+  onDelete: (conversationId: string) => Promise<void>;
   /** 搜索关键词（受控）。空串 = 非搜索模式。 */
   query: string;
   /** 搜索中。 */
@@ -44,12 +47,19 @@ function timeOf(conversation: ConversationSummary): string {
   });
 }
 
+/** 去掉 Electron 给 IPC 错误加的 `Error invoking remote method '…'` 包装。 */
+function clean(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  return raw.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, "").trim() || raw;
+}
+
 export function ConversationList({
   conversations,
   activeId,
   disabled,
   onSelect,
   onRename,
+  onDelete,
   query,
   searching,
   results,
@@ -60,12 +70,10 @@ export function ConversationList({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  /** 去掉 Electron 给 IPC 错误加的 `Error invoking remote method '…'` 包装。 */
-  function clean(e: unknown): string {
-    const raw = e instanceof Error ? e.message : String(e);
-    return raw.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, "").trim() || raw;
-  }
+  /** 待删除的会话（null = 没在删）。确认弹窗要求逐字输入它的标题。 */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function submitRename(conversationId: string): Promise<void> {
     setBusy(true);
@@ -85,7 +93,8 @@ export function ConversationList({
   const searchMode = results !== null;
 
   return (
-    <div className="conversation-list">
+    <>
+      <div className="conversation-list">
         <div className="conversation-search">
           <input
             type="text"
@@ -93,7 +102,7 @@ export function ConversationList({
             value={query}
             disabled={disabled}
             placeholder="搜索会话标题…"
-            title="按会话标题搜索（服务端 summary_search）。只能搜到设置了自定义标题的会话 —— 用行尾的 ✎ 改名。正文内容请用左侧「召回」里的 recall 试搜。"
+            title="按会话标题搜索（服务端 summary_search）。只能搜到设置了自定义标题的会话 —— 用行尾的 ✎ 改名。正文内容请用顶栏「⚙ 设置」里的 recall 试搜。"
             onChange={(e) => onQueryChange(e.target.value)}
           />
           {query ? (
@@ -102,17 +111,21 @@ export function ConversationList({
             </button>
           ) : null}
         </div>
+
         {searchMode ? (
           <div className="conversation-search-note">
             {searching ? "搜索中…" : `找到 ${shown.length} 个会话`}
             {!searching && shown.length === 0 ? " —— 只能搜到有自定义标题的会话" : ""}
           </div>
         ) : null}
+
         {shown.length === 0 && !searchMode ? (
           <div className="sidebar-empty">{disabled ? "等待连接…" : "还没有会话"}</div>
         ) : null}
+
         {shown.map((conversation) => {
           const active = conversation.id === activeId;
+
           if (editingId === conversation.id) {
             return (
               <div key={conversation.id} className="conversation-rename">
@@ -127,14 +140,29 @@ export function ConversationList({
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") void submitRename(conversation.id);
-                    if (e.key === "Escape") { setEditingId(null); setError(null); }
+                    if (e.key === "Escape") {
+                      setEditingId(null);
+                      setError(null);
+                    }
                   }}
                 />
                 <div className="rename-actions">
-                  <button type="button" className="btn-soft" disabled={busy} onClick={() => void submitRename(conversation.id)}>
+                  <button
+                    type="button"
+                    className="btn-soft"
+                    disabled={busy}
+                    onClick={() => void submitRename(conversation.id)}
+                  >
                     {busy ? "…" : "保存"}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => { setEditingId(null); setError(null); }}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingId(null);
+                      setError(null);
+                    }}
+                  >
                     取消
                   </button>
                 </div>
@@ -142,6 +170,7 @@ export function ConversationList({
               </div>
             );
           }
+
           return (
             <div key={conversation.id} className={`conversation-row${active ? " active" : ""}`}>
               <button
@@ -157,11 +186,17 @@ export function ConversationList({
                   {conversation.messageCount > 0 ? ` · ${conversation.messageCount} 条` : ""}
                 </span>
               </button>
+
+              {/* 改名 */}
               <button
                 type="button"
                 className="rename-trigger"
                 disabled={disabled}
-                title={conversation.summary ? `改名（当前自定义标题：${conversation.summary}）` : "给这个会话起个名字"}
+                title={
+                  conversation.summary
+                    ? `改名（当前自定义标题：${conversation.summary}）`
+                    : "给这个会话起个名字"
+                }
                 onClick={() => {
                   setDraft(conversation.summary ?? "");
                   setError(null);
@@ -170,9 +205,46 @@ export function ConversationList({
               >
                 ✎
               </button>
+
+              {/* 删除（不可逆，需二次确认） */}
+              <button
+                type="button"
+                className="delete-trigger"
+                disabled={disabled}
+                title="删除这个会话（不可逆，需二次确认）"
+                onClick={() => {
+                  setPendingDelete({ id: conversation.id, label: labelOf(conversation) });
+                  setDeleteError(null);
+                }}
+              >
+                ✕
+              </button>
             </div>
           );
         })}
-    </div>
+      </div>
+
+      {pendingDelete ? (
+        <ConfirmDelete
+          title="删除会话"
+          target={pendingDelete.label}
+          detail={`会话 ${pendingDelete.id}。删完需要重启服务端，列表才会彻底刷新。`}
+          busy={deleting}
+          error={deleteError}
+          onCancel={() => {
+            setPendingDelete(null);
+            setDeleteError(null);
+          }}
+          onConfirm={() => {
+            setDeleting(true);
+            setDeleteError(null);
+            void onDelete(pendingDelete.id)
+              .then(() => setPendingDelete(null))
+              .catch((e: unknown) => setDeleteError(clean(e)))
+              .finally(() => setDeleting(false));
+          }}
+        />
+      ) : null}
+    </>
   );
 }

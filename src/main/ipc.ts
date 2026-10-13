@@ -6,6 +6,7 @@ import type {
 } from "@/shared/ipc-contract";
 import type { AppServerBridge } from "./app-server";
 import { runRecallCommand, toRecallArgs } from "./recall";
+import { deleteConversation, readConversationSummary } from "./conversation-store";
 
 const PERMISSION_MODES: readonly PermissionMode[] = [
   "standard",
@@ -168,6 +169,22 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (path !== undefined && typeof path !== "string") throw new Error("path 必须是字符串");
     if (limit !== undefined && typeof limit !== "number") throw new Error("limit 必须是数字");
     return deps.getBridge().memoryHistory(agentId, path as string | undefined, limit as number | undefined);
+  });
+
+  // ---- 删除会话（协议无此命令，直接动本地存储）----
+  ipcMain.handle("haruyuki:deleteConversation", (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("deleteConversation 需要非空 conversationId");
+    }
+    const result = deleteConversation(conversationId);
+    return { ...result, needsRestart: true };
+  });
+
+  ipcMain.handle("haruyuki:conversationTitle", (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("conversationTitle 需要非空 conversationId");
+    }
+    return readConversationSummary(conversationId);
   });
 
   // ---- 新建 agent ----

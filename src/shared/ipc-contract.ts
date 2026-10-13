@@ -497,6 +497,20 @@ export interface MemoryCommit {
   date?: string;
 }
 
+/** `deleteConversation` 的结果。 */
+export interface DeleteConversationResult {
+  conversationId: string;
+  /** 是否真的删掉了一个目录。 */
+  removed: boolean;
+  /** 目录本就不存在（通常表示已经删过）。 */
+  alreadyGone: boolean;
+  /**
+   * 列表要变必须重启 app-server（服务端把会话缓存在内存里）。
+   * 目前恒为 true —— 留着这个字段是为了让界面的提示有明确依据。
+   */
+  needsRestart: boolean;
+}
+
 /** preload 通过 contextBridge 暴露给渲染进程的全部能力（白名单）。 */
 export interface HaruyukiApi {
   getStatus(): Promise<ServerStatus>;
@@ -562,6 +576,21 @@ export interface HaruyukiApi {
    * @returns 新 agent（供界面立刻选中）。
    */
   createAgent(name: string): Promise<AgentSummary>;
+  /**
+   * **彻底删除**一个会话（不可逆）。
+   *
+   * ⚠️ 协议**没有删除命令**，所以这里直接删本地后端的目录
+   * （`<storage>/conversations/<base64url("conversation:"+id)>`）。见
+   * `src/main/conversation-store.ts` 的说明。
+   *
+   * ⚠️ **删完必须重启 app-server 列表才会变** —— 服务端把会话缓存在内存里。
+   * 所以这个方法的返回值里带 `needsRestart`，界面据此提示用户。
+   *
+   * ⚠️ **不影响记忆**：MemFS 按 agent 存，与会话无关。
+   */
+  deleteConversation(conversationId: string): Promise<DeleteConversationResult>;
+  /** 读会话的自定义标题，用于删除确认弹窗里显示"你正在删哪个"。 */
+  conversationTitle(conversationId: string): Promise<string | null>;
   /**
    * 给会话改名（`conversation_update { summary }`）。
    *

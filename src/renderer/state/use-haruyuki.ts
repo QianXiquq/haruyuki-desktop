@@ -416,6 +416,29 @@ export function useHaruyuki() {
     [agentIdRef, notice],
   );
 
+  /**
+   * 删除一个会话（**不可逆**）。
+   *
+   * 协议没有删除命令，主进程直接删本地目录。删完**服务端列表不会立刻变**
+   * （会话缓存在内存里），所以这里除了刷新列表，还要让界面提示用户重启服务端。
+   */
+  const deleteConversation = useCallback(
+    async (conversationId: string) => {
+      await window.haruyuki.deleteConversation(conversationId);
+      // 被删的正是当前会话 → 清掉当前态，避免界面停在一个已经不存在的会话上
+      if (activeIdRef.current === conversationId) {
+        activeIdRef.current = null;
+        storeConversationId(null);
+        setActiveConversationId(null);
+        setItems([]);
+      }
+      const agentId = agentIdRef.current;
+      if (agentId) await refreshConversations(agentId);
+      notice("会话已删除 —— 需重启服务端，列表才会彻底刷新", "info");
+    },
+    [activeIdRef, notice, refreshConversations],
+  );
+
   /** 给会话改名。改完刷新列表，让标题立刻反映出来。 */
   const renameConversation = useCallback(
     async (conversationId: string, summary: string) => {
@@ -796,6 +819,7 @@ export function useHaruyuki() {
     models,
     currentModelId,
     renameConversation,
+    deleteConversation,
     createAgent,
     memory,
     memoryBusy,

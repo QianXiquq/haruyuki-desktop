@@ -24,7 +24,8 @@
     "check:agent": "bun scripts/agent-check.ts",
     "check:memory": "bun scripts/memory-check.ts",
     "check:search": "bun scripts/search-check.ts",
-    "check:perf": "bun scripts/perf-check.ts"
+    "check:perf": "bun scripts/perf-check.ts",
+    "check:delete": "bun scripts/delete-check.ts"
   },
   "dependencies": {
     "react": "^19.3.0",

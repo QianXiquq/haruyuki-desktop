@@ -441,3 +441,35 @@ button.interrupt:hover:not(:disabled) { background: #2a2418; }
 .settings-body .recall-head { font-size: 13px; }
 .settings-body .recall-build { font-size: 12px; padding: 6px 10px; }
 .settings-trigger { white-space: nowrap; }
+
+/* 危险操作确认弹窗 */
+.confirm-modal { width: min(520px, 92vw); height: auto; }
+.modal-title.danger { color: var(--err); }
+.confirm-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.confirm-lead { margin: 0; color: var(--muted); font-size: 12px; }
+.confirm-target {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 9px 11px; font-size: 13px; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.confirm-detail { margin: 0; color: var(--muted-dim); font-size: 11px; line-height: 1.6; }
+.confirm-warn { margin: 0; color: var(--warn); font-size: 11px; line-height: 1.6; }
+.confirm-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+.confirm-field input {
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 12px;
+}
+.confirm-error { color: var(--err); font-size: 11px; }
+.confirm-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 16px; border-top: 1px solid var(--border-soft); background: var(--sidebar);
+}
+
+/* 会话行里的删除按钮（hover 才出现，与改名铅笔并排） */
+.conversation-row .delete-trigger {
+  position: absolute; right: 26px; top: 6px;
+  opacity: 0; color: var(--muted-dim); padding: 2px 6px; font-size: 12px;
+  background: var(--panel-strong); border-radius: 6px;
+}
+.conversation-row:hover .delete-trigger, .conversation-row .delete-trigger:focus-visible { opacity: 1; }
+.conversation-row .delete-trigger:hover:not(:disabled) { color: var(--err); }

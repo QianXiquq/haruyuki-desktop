@@ -83,6 +83,7 @@ export function App() {
     currentModelId,
     changeModel,
     renameConversation,
+    deleteConversation,
     createAgent,
     memory,
     memoryBusy,
@@ -189,6 +190,7 @@ export function App() {
             disabled={status.state !== "connected"}
             onSelect={(id) => void onSelectConversation(id)}
             onRename={renameConversation}
+            onDelete={deleteConversation}
             query={searchQuery}
             searching={searching}
             results={searchResults}
