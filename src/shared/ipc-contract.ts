@@ -423,7 +423,20 @@ export interface StatusSummary {
   /** 当前会话上下文的 token 规模（绝对值）。 */
   contextTokens: number;
   /** 本次运行的累计 token。 */
+  /**
+   * **本次运行**（应用启动至今）的累计 token —— 跨会话，切换会话时清零重攒。
+   *
+   * ⚠️ 与 `conversationTokens` 不同：那个是"本会话所有轮"，切回来还能延续。
+   */
   totalTokens: number;
+  /**
+   * **本窗口（当前会话）所有轮**的 token 总和 —— 底部状态条的主角。
+   *
+   * ⚠️ **只覆盖本次运行产生的轮次**：协议在 `conversation_messages_list` 里把
+   * `assistant_message.usage` 整段丢掉了（实测为 null），所以打开一个旧会话时
+   * 它的数字从 0 开始重新攒。这是数据的限制，不是漏算 —— 界面必须写明。
+   */
+  conversationTokens: number;
   /** 缓存命中率（0–100，拿不到时为 undefined）。 */
   cacheHitRate?: number;
   /** 有几轮用过召回。 */

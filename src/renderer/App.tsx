@@ -62,6 +62,7 @@ export function App() {
     restarting,
     usageByItem,
     usageTotals,
+    conversationUsage,
     lastUsage,
     cwd,
     applyRecallSetting,
@@ -342,6 +343,9 @@ export function App() {
               ...(status.protocolVersion ? { protocolVersion: status.protocolVersion } : {}),
               ...(status.backend ? { backend: status.backend } : {}),
               contextTokens: lastUsage?.contextTokens ?? 0,
+              // "本窗口所有轮"—— 状态条的主角
+              conversationTokens: conversationUsage.promptTokens + conversationUsage.completionTokens,
+              // "本次运行"累计（跨会话），切换会话会清零重攒
               totalTokens: usageTotals.promptTokens + usageTotals.completionTokens,
               ...(hit !== undefined ? { cacheHitRate: hit } : {}),
               recallTurns: activeConversation?.recallInjectedMessageIds?.length ?? 0,

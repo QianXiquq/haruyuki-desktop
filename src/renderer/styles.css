@@ -473,3 +473,7 @@ button.interrupt:hover:not(:disabled) { background: #2a2418; }
 }
 .conversation-row:hover .delete-trigger, .conversation-row .delete-trigger:focus-visible { opacity: 1; }
 .conversation-row .delete-trigger:hover:not(:disabled) { color: var(--err); }
+
+/* 状态条：把"本会话合计"强调出来（它是主角），分隔符低调 */
+.statusbar-strong { color: var(--fg); font-weight: 500; }
+.statusbar-sep { color: var(--muted-dim); }

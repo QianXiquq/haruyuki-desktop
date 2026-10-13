@@ -119,6 +119,19 @@ export function useHaruyuki() {
   const [usageByItem, setUsageByItem] = useState<Record<string, UsageStats>>({});
   /** **本次运行**的累计（不落盘，重启清零 —— 口径写在界面上）。 */
   const [usageTotals, setUsageTotals] = useState<UsageTotals>(EMPTY_USAGE_TOTALS);
+  /**
+   * **按会话**累计的用量，供底部状态条显示"本窗口所有轮"的 token 总和。
+   *
+   * ⚠️ `usageTotals` 是**整个运行**的累计（跨会话且从不重置），拿它当"本窗口"会算错口径。
+   *
+   * ⚠️ **按 id 存而不是每次切换清零**：如果清零，切回同一个会话时之前那些轮的用量就丢了；
+   * 而按 id 存可以**切回来时延续**（前提是应用没重启 —— 用量只存在于内存里）。
+   *
+   * ⚠️ 历史消息**没有**用量：协议在 `conversation_messages_list` 里把
+   * `assistant_message.usage` 整段丢掉了（实测为 null），所以这里的数字
+   * **只覆盖本次运行新产生的轮次**，不是这个会话一辈子的总消耗。界面必须标明这一点。
+   */
+  const [usageByConversation, setUsageByConversation] = useState<Record<string, UsageTotals>>({});
   const [lastUsage, setLastUsage] = useState<UsageStats | null>(null);
   /**
    * 当前会话的工作目录。“看不到 agent 在哪工作”曾是 GUI 最严重的方位感缺失 ——
@@ -230,6 +243,14 @@ export function useHaruyuki() {
           if (target) setUsageByItem((prev) => ({ ...prev, [target]: event.usage }));
           setLastUsage(event.usage);
           setUsageTotals((prev) => accumulateUsage(prev, event.usage));
+          // 同时记到当前会话名下（"本窗口所有轮"的合计）
+          const convId = activeIdRef.current;
+          if (convId) {
+            setUsageByConversation((prev) => ({
+              ...prev,
+              [convId]: accumulateUsage(prev[convId] ?? EMPTY_USAGE_TOTALS, event.usage),
+            }));
+          }
           return;
         }
         case "notice":
@@ -814,6 +835,8 @@ export function useHaruyuki() {
     recallBusy,
     usageByItem,
     usageTotals,
+    /** 当前会话所有轮的累计（"本窗口"）。没有记录时是空的。 */
+    conversationUsage: (activeConversationId ? usageByConversation[activeConversationId] : undefined) ?? EMPTY_USAGE_TOTALS,
     lastUsage,
     cwd,
     models,
