@@ -93,15 +93,41 @@ export function RecallPanel({
 }: Props) {
   const connected = status.state === "connected";
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  /** 始终指向最新的 onRefresh —— 这样 effect 就不需要把它当依赖（见上面的说明）。 */
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
   const [probeQuery, setProbeQuery] = useState("");
   const [probeResult, setProbeResult] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
   /** 用户正在编辑时不要用刷新回来的值覆盖他的输入。 */
   const editing = useRef(false);
 
+  // ⚠️ **这里原本是一个无限循环，是"发消息就卡死"的根因**。
+  //
+  // 原写法 `useEffect(() => { if (connected) onRefresh(); }, [connected, onRefresh])`
+  // 把 `onRefresh` 放进了依赖，而调用方（App）传的是**内联箭头函数**
+  // `onRefresh={() => void refreshRecall()}` —— 每次渲染都是**新引用**，于是：
+  //
+  //   effect 触发 → refreshRecall() → setRecall(...) 改状态 → App 重渲染
+  //   → 新的 onRefresh → effect 再次触发 → …（无限）
+  //
+  // 每轮都 spawn 一个 `haruyuki recall status` 子进程，而每个子进程要活到
+  // **60 秒超时**才死 —— 实测堆积到 **187 个**子进程、负载冲到 **286**、
+  // `kernel_task` 烧到 **257%**、macOS 触发 `spindump` 判定系统卡死。
+  //
+  // 发消息时 setItems 频繁重渲染，循环随之加速，所以症状表现为"一发消息就卡"。
+  //
+  // 修法：**只在连接状态真正变化时拉一次**，用 ref 记录是否已拉过，彻底断开依赖。
+  const pulledForConnection = useRef(false);
   useEffect(() => {
-    if (connected) onRefresh();
-  }, [connected, onRefresh]);
+    if (!connected) {
+      pulledForConnection.current = false;
+      return;
+    }
+    if (pulledForConnection.current) return;
+    pulledForConnection.current = true;
+    onRefreshRef.current();
+  }, [connected]);
 
   useEffect(() => {
     if (!recall || editing.current) return;

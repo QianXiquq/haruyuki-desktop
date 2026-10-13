@@ -16,6 +16,7 @@
  */
 import { parseRecallStatus } from "@/shared/ipc-contract";
 import { runRecallCommand, toRecallArgs } from "@/main/recall";
+import { execFileSync } from "node:child_process";
 
 const checks: { label: string; ok: boolean; detail?: string }[] = [];
 function check(label: string, ok: boolean, detail?: string): void {
@@ -206,3 +207,75 @@ if (failed.length > 0) {
   for (const item of failed) console.log(`  ❌ ${item.label}${item.detail ? ` —— ${item.detail}` : ""}`);
   process.exitCode = 1;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⑦ 防雪崩护栏（回归测试）
+//
+// 来历：`RecallPanel` 的 useEffect 把每次渲染都变引用的 `onRefresh` 放进了依赖，
+// 形成无限循环，每轮 spawn 一个 `recall status`。因为超时当时是 **60 秒**，
+// 进程堆到 **232 个**、负载 327、kernel_task 257%，macOS 触发 spindump 判定卡死。
+//
+// 修法是两处：断开循环 + 在这个 spawn 层加护栏。本段测的是**护栏**。
+// ═══════════════════════════════════════════════════════════════════════════
+console.log("\n=== ⑦ 防雪崩护栏 ===");
+
+/** 数当前有几个 recall 子进程。 */
+function countRecallProcs(): number {
+  try {
+    const out = execFileSync("pgrep", ["-f", "haruyuki.js recall"], { encoding: "utf8" }).trim();
+    return out ? out.split("\n").length : 0;
+  } catch {
+    // pgrep 没命中时退出码非 0，这是正常的"0 个"。
+    return 0;
+  }
+}
+
+// ① 同一组参数并发调用 → 必须只 spawn 一个（复用同一个 promise）
+const before = countRecallProcs();
+const burst = await Promise.all(
+  Array.from({ length: 12 }, () => runRecallCommand(["status"])),
+);
+const peakSameArgs = countRecallProcs();
+console.log(`   同参数并发 12 次 → 采样时 recall 进程数 ${peakSameArgs}（起始 ${before}）`);
+check(
+  "同参数的并发请求被合并（不会 12 个进程）",
+  peakSameArgs - before <= 1,
+  `新增 ${peakSameArgs - before} 个进程`,
+);
+check(
+  "12 次并发都拿到了结果（合并不等于失败）",
+  burst.length === 12 && burst.every((r) => typeof r.ok === "boolean"),
+  `${burst.filter((r) => r.ok).length}/12 成功`,
+);
+
+// ② 并发上限：用**不同参数**制造不同的 key，这样不会被 in-flight 复用合并。
+//    同参数会被①的复用机制合并掉，所以这里必须让每次调用的参数都不同。
+const distinct = Array.from({ length: 10 }, (_, i) =>
+  runRecallCommand(["status", "--__guard-test", String(i)]),
+);
+const capped = await Promise.all(distinct);
+const rejected = capped.filter((r) => !r.ok && /并发上限/.test(r.error ?? ""));
+console.log(`   不同参数并发 10 次 → ${rejected.length} 个被并发上限拒绝`);
+check(
+  "并发上限生效：超出上限的请求被拒绝（10 个里拒绝 6 个 = 上限 4）",
+  rejected.length === 10 - 4,
+  `拒绝 ${rejected.length} 个（期望 6）`,
+);
+check(
+  "触顶的请求**明确报错**而不是静默失败（用户能看到原因）",
+  rejected.length > 0 && /并发上限/.test(rejected[0]!.error ?? ""),
+  (rejected[0]?.error ?? "").slice(0, 80),
+);
+check(
+  "被拒绝的请求也返回了结构化结果（不抛异常）",
+  capped.every((r) => typeof r.ok === "boolean" && typeof r.output === "string"),
+);
+
+// ③ 等全部结束后，进程数必须回到起点
+await new Promise((r) => setTimeout(r, 3000));
+const settled = countRecallProcs();
+check(
+  "全部结束后没有残留进程（护栏不会留下僵尸）",
+  settled <= before,
+  `残留 ${settled} 个（起始 ${before}）`,
+);

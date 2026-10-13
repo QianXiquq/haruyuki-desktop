@@ -32,8 +32,35 @@ import type { RecallCommandResult, RecallSettingValue } from "@/shared/ipc-contr
  * **GUI 用户没有它就永远好不了**。这就是本模块存在的理由。
  */
 
-/** 单次子命令的硬超时。实测 `status`/`build` 都是毫秒级，给足余量即可。 */
-const RECALL_TIMEOUT_MS = 60_000;
+/**
+ * 单次子命令的硬超时。
+ *
+ * ⚠️ 原值是 **60 秒**，那是**灾难性的错误配置**：实测 `recall status` 稳定在
+ * **0.4~0.5 秒**（连测 5 次），60 秒是 ~120 倍冗余。当 `RecallPanel` 的
+ * `useEffect` 陷入无限循环时，每个泄漏的子进程要**赖满 60 秒**才死，
+ * 于是堆到 **232 个**、负载 327、`kernel_task` 257%，整机卡死。
+ *
+ * 超时值的意义不只是"够不够用"，还包括"**出错时能多快恢复**"。对一个正常
+ * 半秒完成的本地命令，15 秒（30 倍余量）已经足够宽容。
+ */
+const RECALL_TIMEOUT_MS = 15_000;
+
+/**
+ * 同时在跑的 recall 子进程上限。
+ *
+ * ⚠️ 这是**护栏，不是正常路径**。来历：`RecallPanel` 的一个 `useEffect` 把
+ * 每次渲染都变引用的 `onRefresh` 放进了依赖，形成无限循环，每轮 spawn 一个
+ * `recall status`。因为超时是 60 秒，进程一路堆到 **187 个**，负载冲到 286、
+ * `kernel_task` 烧到 257%、macOS 触发 `spindump` 判定系统卡死。
+ *
+ * 修完那个循环之后这个上限理论上永远碰不到 —— 但**这类 bug 的代价是整个系统卡死**，
+ * 所以宁可在这里硬性兜底：超过就立刻报错，而不是继续 spawn。
+ */
+const MAX_CONCURRENT_RECALL = 4;
+
+/** 同一组参数的**进行中**请求：复用同一个 promise，避免重复 spawn。 */
+const inFlight = new Map<string, Promise<RecallCommandResult>>();
+let running = 0;
 
 export interface RecallRunOptions {
   timeoutMs?: number;
@@ -49,6 +76,37 @@ export interface RecallRunOptions {
 export function runRecallCommand(
   args: string[],
   options: RecallRunOptions = {},
+): Promise<RecallCommandResult> {
+  const key = args.join("\u0000");
+
+  // ① 同参数的请求已经在跑 → 直接复用，**不再 spawn**。
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+
+  // ② 并发上限 —— 触顶就明确报错，而不是继续堆进程。
+  if (running >= MAX_CONCURRENT_RECALL) {
+    return Promise.resolve({
+      ok: false,
+      output: "",
+      error:
+        `recall 子进程已达并发上限（${MAX_CONCURRENT_RECALL}），本次 \`${args.join(" ")}\` 未执行。` +
+        `这通常意味着有代码在反复调用 recall —— 请报告此现象。`,
+    });
+  }
+
+  const promise = spawnRecallCommand(args, options);
+  inFlight.set(key, promise);
+  running++;
+  void promise.finally(() => {
+    inFlight.delete(key);
+    running--;
+  });
+  return promise;
+}
+
+function spawnRecallCommand(
+  args: string[],
+  options: RecallRunOptions,
 ): Promise<RecallCommandResult> {
   const timeoutMs = options.timeoutMs ?? RECALL_TIMEOUT_MS;
   const launcher = resolveHaruyukiLauncher();
