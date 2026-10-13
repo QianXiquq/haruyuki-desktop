@@ -44,12 +44,21 @@ export function StatusBar({ summary }: Props) {
    * 不说明的话，用户会以为这是这个会话一辈子的总消耗。
    */
   if (s.conversationTokens > 0) {
+    const t = s.conversationTurns;
+    // 协议不下发历史 usage，所以这个数字是**直接读本地存储**算出来的。
+    const coverage = t
+      ? t.withUsage === t.assistantMessages
+        ? `已覆盖 ${t.withUsage} 轮（全部）。`
+        : `已覆盖 ${t.withUsage} / ${t.assistantMessages} 轮 —— 有 ${t.assistantMessages - t.withUsage} 轮缺用量记录，合计偏小。`
+      : "";
     parts.push({
       text: `本会话合计 ${formatTokens(s.conversationTokens)} tok`,
       strong: true,
       title:
         "本窗口（当前会话）所有轮的 token 合计（输入 + 输出）。\n" +
-        "只统计本次运行产生的轮次：协议在历史消息里丢掉了 usage，所以打开旧会话时从 0 开始攒。",
+        "含磁盘上的历史轮次 + 本次运行新增的轮次。\n" +
+        "协议不下发历史 usage，这个数字是直接读本地存储算出来的。\n" +
+        coverage,
     });
   }
   if (s.totalTokens > 0) {

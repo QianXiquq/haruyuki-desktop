@@ -25,6 +25,10 @@ interface Props {
   onProbe: (query: string) => Promise<{ ok: boolean; output: string; error?: string }>;
   /** 最近一轮的用量（用于展示上下文规模）。 */
   lastUsage: UsageStats | null;
+  /** **本会话全部** token（含磁盘历史）—— 只在「本会话（含历史）」那行用。 */
+  conversationTokens: number;
+  /** 历史基数的覆盖情况；null = 还没读到。 */
+  conversationHistory: { turns: number; assistantMessages: number } | null;
 }
 
 /** 表单里的草稿值。全部按字符串存，避免数字输入框在编辑中途被强行转成数字。 */
@@ -89,6 +93,8 @@ export function RecallPanel({
   onRestart,
   usageTotals,
   lastUsage,
+  conversationTokens,
+  conversationHistory,
   onProbe,
 }: Props) {
   const connected = status.state === "connected";
@@ -285,10 +291,26 @@ export function RecallPanel({
 
       {/* ---------- 用量（C 项：只有 token，没有成本）---------- */}
       <div className="usage-panel">
-        <div className="usage-head">本次运行用量</div>
+        {/*
+          ⚠️ 这里要分清两个口径：
+          - 「本会话（含历史）」= 磁盘上的历史 + 本次运行新增 —— 打开旧会话直接就有总量
+          - 「本次运行」= 应用启动至今，跨会话
+          混在一起会让人以为打开旧会话时用量是空的（协议不下发历史 usage）。
+        */}
+        <div className="usage-head">用量</div>
+        <div className="usage-total">
+          本会话（含历史）{formatTokens(conversationTokens)} tokens
+        </div>
+        {conversationHistory && conversationHistory.assistantMessages > 0 ? (
+          <div className="recall-line muted small">
+            历史全量：{conversationHistory.turns}/{conversationHistory.assistantMessages} 轮有用量记录
+            {conversationHistory.turns < conversationHistory.assistantMessages ? "（有轮次缺记录）" : ""}
+          </div>
+        ) : null}
+        <div className="usage-head" style={{ marginTop: 8 }}>本次运行新增</div>
         {usageTotals.turns === 0 ? (
-          <div className="recall-line muted small" title="历史消息的 usage 被协议丢掉了，所以只统计本次运行">
-            还没有用量（只统计本次运行）
+          <div className="recall-line muted small" title="本次运行还没有新产生的轮次">
+            本次运行还没有新用量
           </div>
         ) : (
           <>

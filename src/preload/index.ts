@@ -60,6 +60,10 @@ const api: HaruyukiApi = {
     ipcRenderer.invoke("haruyuki:deleteConversation", conversationId) as ReturnType<
       HaruyukiApi["deleteConversation"]
     >,
+  conversationTokens: (conversationId) =>
+    ipcRenderer.invoke("haruyuki:conversationTokens", conversationId) as ReturnType<
+      HaruyukiApi["conversationTokens"]
+    >,
   conversationTitle: (conversationId) =>
     ipcRenderer.invoke("haruyuki:conversationTitle", conversationId) as ReturnType<
       HaruyukiApi["conversationTitle"]

@@ -62,7 +62,8 @@ export function App() {
     restarting,
     usageByItem,
     usageTotals,
-    conversationUsage,
+    conversationTokens,
+    conversationHistory,
     lastUsage,
     cwd,
     applyRecallSetting,
@@ -343,12 +344,20 @@ export function App() {
               ...(status.protocolVersion ? { protocolVersion: status.protocolVersion } : {}),
               ...(status.backend ? { backend: status.backend } : {}),
               contextTokens: lastUsage?.contextTokens ?? 0,
-              // "本窗口所有轮"—— 状态条的主角
-              conversationTokens: conversationUsage.promptTokens + conversationUsage.completionTokens,
+              // "本窗口所有轮"—— 历史基数 + 本次运行新增（状态条的主角）
+              conversationTokens,
               // "本次运行"累计（跨会话），切换会话会清零重攒
               totalTokens: usageTotals.promptTokens + usageTotals.completionTokens,
               ...(hit !== undefined ? { cacheHitRate: hit } : {}),
               recallTurns: activeConversation?.recallInjectedMessageIds?.length ?? 0,
+              ...(conversationHistory
+                ? {
+                    conversationTurns: {
+                      withUsage: conversationHistory.turns,
+                      assistantMessages: conversationHistory.assistantMessages,
+                    },
+                  }
+                : {}),
               recallMissing: recall?.missing ?? 0,
             }}
           />
@@ -364,6 +373,12 @@ export function App() {
           status={status}
           usageTotals={usageTotals}
           lastUsage={lastUsage}
+          conversationTokens={conversationTokens}
+          conversationHistory={
+            conversationHistory
+              ? { turns: conversationHistory.turns, assistantMessages: conversationHistory.assistantMessages }
+              : null
+          }
           onRefresh={() => void refreshRecall()}
           onBuild={() => void buildRecallIndex()}
           onApply={(setting) => void applyRecallSetting(setting)}

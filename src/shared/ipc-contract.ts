@@ -432,11 +432,15 @@ export interface StatusSummary {
   /**
    * **本窗口（当前会话）所有轮**的 token 总和 —— 底部状态条的主角。
    *
-   * ⚠️ **只覆盖本次运行产生的轮次**：协议在 `conversation_messages_list` 里把
-   * `assistant_message.usage` 整段丢掉了（实测为 null），所以打开一个旧会话时
-   * 它的数字从 0 开始重新攒。这是数据的限制，不是漏算 —— 界面必须写明。
+   * 由两部分相加：
+   * 1. **磁盘上的历史基数**（协议不下发 usage，只能直接读本地存储）
+   * 2. **本次运行新产生的轮次**
+   *
+   * 所以**打开旧会话时它直接就有历史总量**，不是从 0 开始攒。
    */
   conversationTokens: number;
+  /** 历史基数的完整度，用于说明这个数字覆盖了多少轮。 */
+  conversationTurns?: { withUsage: number; assistantMessages: number };
   /** 缓存命中率（0–100，拿不到时为 undefined）。 */
   cacheHitRate?: number;
   /** 有几轮用过召回。 */
@@ -508,6 +512,22 @@ export interface MemoryCommit {
   hash: string;
   message?: string;
   date?: string;
+}
+
+/** `conversationTokens` 的返回：历史 token 总和及其口径明细。 */
+export interface ConversationTokenTotals {
+  conversationId: string;
+  /** 输入 + 输出，逐条累加。 */
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** 命中缓存读取的输入（成本项，不计入 totalTokens）。 */
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  /** 有 usage 的记录条数。 */
+  turns: number;
+  /** assistant 消息总条数；与 `turns` 不等时说明部分轮次缺用量。 */
+  assistantMessages: number;
 }
 
 /** `deleteConversation` 的结果。 */
@@ -602,6 +622,17 @@ export interface HaruyukiApi {
    * ⚠️ **不影响记忆**：MemFS 按 agent 存，与会话无关。
    */
   deleteConversation(conversationId: string): Promise<DeleteConversationResult>;
+  /**
+   * **读某个会话的历史 token 总和**（直接读本地存储，不走协议）。
+   *
+   * ⚠️ 协议在 `conversation_messages_list` 里把 `assistant_message.usage` 整段丢掉了
+   * （实测 `null`），而磁盘上每条 assistant 消息都有完整 usage。所以"打开旧会话就显示
+   * 历史消耗"**只能从磁盘读**，见 `src/main/conversation-store.ts`。
+   *
+   * ⚠️ 口径是 **`input + output` 逐条累加**，不是 `usage.totalTokens` ——
+   * 后者是当时的**上下文规模**（快照），累加会虚高数倍（实测 20041 → 75465）。
+   */
+  conversationTokens(conversationId: string): Promise<ConversationTokenTotals>;
   /** 读会话的自定义标题，用于删除确认弹窗里显示"你正在删哪个"。 */
   conversationTitle(conversationId: string): Promise<string | null>;
   /**

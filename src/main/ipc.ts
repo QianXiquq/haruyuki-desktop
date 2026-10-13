@@ -6,7 +6,7 @@ import type {
 } from "@/shared/ipc-contract";
 import type { AppServerBridge } from "./app-server";
 import { runRecallCommand, toRecallArgs } from "./recall";
-import { deleteConversation, readConversationSummary } from "./conversation-store";
+import { deleteConversation, readConversationSummary, readConversationTokens } from "./conversation-store";
 
 const PERMISSION_MODES: readonly PermissionMode[] = [
   "standard",
@@ -178,6 +178,13 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
     const result = deleteConversation(conversationId);
     return { ...result, needsRestart: true };
+  });
+
+  ipcMain.handle("haruyuki:conversationTokens", (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("conversationTokens 需要非空 conversationId");
+    }
+    return readConversationTokens(conversationId);
   });
 
   ipcMain.handle("haruyuki:conversationTitle", (_event, conversationId: unknown) => {

@@ -9,6 +9,10 @@ interface Props {
   status: ServerStatus;
   usageTotals: UsageTotals;
   lastUsage: UsageStats | null;
+  /** 本会话全部 token（含磁盘历史）。 */
+  conversationTokens: number;
+  /** 历史基数的覆盖情况。 */
+  conversationHistory: { turns: number; assistantMessages: number } | null;
   onRefresh: () => void;
   onBuild: () => void;
   onApply: (setting: RecallSettingValue) => void;
@@ -39,6 +43,8 @@ export function SettingsModal({
   status,
   usageTotals,
   lastUsage,
+  conversationTokens,
+  conversationHistory,
   onRefresh,
   onBuild,
   onApply,
@@ -74,6 +80,8 @@ export function SettingsModal({
             status={status}
             usageTotals={usageTotals}
             lastUsage={lastUsage}
+            conversationTokens={conversationTokens}
+            conversationHistory={conversationHistory}
             onRefresh={onRefresh}
             onBuild={onBuild}
             onApply={onApply}

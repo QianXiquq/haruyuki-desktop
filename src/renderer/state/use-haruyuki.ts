@@ -7,6 +7,7 @@ import type {
   PermissionMode,
   MemoryCommit,
   MemorySnapshot,
+  ConversationTokenTotals,
   ModelCatalog,
   RecallSettingValue,
   RecallStatusSummary,
@@ -132,6 +133,14 @@ export function useHaruyuki() {
    * **只覆盖本次运行新产生的轮次**，不是这个会话一辈子的总消耗。界面必须标明这一点。
    */
   const [usageByConversation, setUsageByConversation] = useState<Record<string, UsageTotals>>({});
+  /**
+   * **历史** token 基数（从磁盘读的一次性快照），按会话 id 存。
+   *
+   * ⚠️ 协议在 `conversation_messages_list` 里丢掉了 `assistant_message.usage`，
+   * 所以"打开旧会话就显示历史消耗"只能直接读本地存储。见 `conversationTokens` 的说明。
+   */
+  const [historyTokens, setHistoryTokens] = useState<Record<string, ConversationTokenTotals>>({});
+
   const [lastUsage, setLastUsage] = useState<UsageStats | null>(null);
   /**
    * 当前会话的工作目录。“看不到 agent 在哪工作”曾是 GUI 最严重的方位感缺失 ——
@@ -709,6 +718,12 @@ export function useHaruyuki() {
         setUsageByItem({});
         setUsageTotals(EMPTY_USAGE_TOTALS);
         setLastUsage(null);
+        // 读这个会话的**历史** token 基数（磁盘上有完整 usage，协议不下发）。
+        // 失败不阻断对话 —— 只是数字少一段，界面会标明"只含已记录的部分"。
+        void window.haruyuki
+          .conversationTokens(scope.conversation_id)
+          .then((totals) => setHistoryTokens((prev) => ({ ...prev, [scope.conversation_id]: totals })))
+          .catch(() => undefined);
         pendingAssistantRef.current = null;
 
         // 每个会话有自己的工作目录（服务端按会话存），所以切换会话必须重读。
@@ -835,8 +850,20 @@ export function useHaruyuki() {
     recallBusy,
     usageByItem,
     usageTotals,
-    /** 当前会话所有轮的累计（"本窗口"）。没有记录时是空的。 */
+    /** 本次运行在**当前会话**新增的用量（不含历史）。 */
     conversationUsage: (activeConversationId ? usageByConversation[activeConversationId] : undefined) ?? EMPTY_USAGE_TOTALS,
+    /**
+     * **当前会话的全部 token**：磁盘上的历史基数 + 本次运行新增。
+     *
+     * 这是状态条上"本会话合计"的数字 —— 打开旧会话时**直接就有历史总量**，
+     * 不是从 0 开始攒。
+     */
+    conversationTokens:
+      (activeConversationId ? historyTokens[activeConversationId]?.totalTokens ?? 0 : 0) +
+      ((activeConversationId ? usageByConversation[activeConversationId] : undefined)?.promptTokens ?? 0) +
+      ((activeConversationId ? usageByConversation[activeConversationId] : undefined)?.completionTokens ?? 0),
+    /** 历史基数本身（含轮次统计，界面据此说明"覆盖了多少轮"）。 */
+    conversationHistory: activeConversationId ? historyTokens[activeConversationId] ?? null : null,
     lastUsage,
     cwd,
     models,

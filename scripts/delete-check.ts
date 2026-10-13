@@ -19,6 +19,7 @@ import { startServer } from "@/main/server-process";
 import { resolveCheckServerCommand, describeCheckServer } from "./server-command";
 import {
   conversationDirName,
+  readConversationTokens,
   conversationIdFromDirName,
   conversationStoreRoot,
   deleteConversation,
@@ -110,6 +111,41 @@ check(
 
 bridge.close();
 server.stop();
+
+// ---------- ⑤ 历史 token 统计（口径回归）----------
+//
+// 这一段守的是**口径**：`usage.totalTokens` 是"当时的上下文规模"（快照），
+// 逐条累加它会把同一个上下文重复计很多次（实测 20041 → 75465，虚高 3.8 倍）。
+// 正确口径是 `input + output`。改错这个会让状态条上的历史合计虚高数倍。
+console.log("\n=== ⑤ 历史 token 统计口径 ===");
+
+const remaining = listStoredConversationIds();
+const withData = remaining.map((id) => ({ id, t: readConversationTokens(id) })).filter((x) => x.t.assistantMessages > 0);
+console.log(`   磁盘上 ${remaining.length} 个会话，其中 ${withData.length} 个有 assistant 消息`);
+
+if (withData.length === 0) {
+  // 只有空会话：仍然要验证"不炸、返回全 0"
+  const zero = readConversationTokens(remaining[0] ?? "nonexistent");
+  check("空会话返回全 0（不抛错）", zero.totalTokens === 0 && zero.turns === 0, JSON.stringify(zero));
+} else {
+  for (const { id, t } of withData.slice(0, 3)) {
+    console.log(`   ${id}: total=${t.totalTokens} in=${t.inputTokens} out=${t.outputTokens} turns=${t.turns}/${t.assistantMessages}`);
+    check(
+      `${id}: totalTokens == input + output（不是 totalTokens 累加）`,
+      t.totalTokens === t.inputTokens + t.outputTokens,
+      `${t.totalTokens} == ${t.inputTokens} + ${t.outputTokens}`,
+    );
+    check(
+      `${id}: 覆盖轮次一致`,
+      t.turns === t.assistantMessages,
+      `${t.turns}/${t.assistantMessages}`,
+    );
+    check(`${id}: totalTokens 为正`, t.totalTokens > 0, String(t.totalTokens));
+  }
+  // 不存在的会话必须安全返回 0（界面会拿它去查空会话）
+  const missing = readConversationTokens("definitely-not-a-real-conversation-zzz");
+  check("不存在的会话返回全 0（不抛错）", missing.totalTokens === 0 && missing.turns === 0);
+}
 
 const failed = checks.filter((c) => !c.ok);
 console.log(`\n=== 结果：${checks.length - failed.length}/${checks.length} 通过 ===`);

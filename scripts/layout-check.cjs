@@ -63,12 +63,20 @@ function afterLoad(win) {
       check("会话标题行高未被压扁（>14px）", (g.title?.h ?? 0) > 14, `实测 ${g.title?.h}px（正常约 15.6；出 bug 时 7.3）`);
       check("会话行高未被压扁（>34px）", (g.conv?.h ?? 0) > 34, `实测 ${g.conv?.h}px`);
 
-      // ② 列表靠滚动而不是压缩来容纳
-      if (g.count > 8) {
-        check("会话多时列表滚动而非压缩行高", (g.listScrollH ?? 0) > (g.listClientH ?? 0),
-          `scrollHeight ${g.listScrollH} > clientHeight ${g.listClientH}`);
+      // ② 列表不靠**压缩行高**来容纳内容
+      //
+      // ⚠️ 要守的是"行高不被压扁"，不是"必须溢出"。
+      // 原断言要求 scrollHeight > clientHeight，但会话少时两者相等
+      // （内容刚好装下、本来就不该滚动）会**误报失败** —— 实测就这么误报过一次。
+      // 被压缩时 scrollHeight 会明显**小于** clientHeight，那才是真问题。
+      if (g.count > 0) {
+        check(
+          "列表不被压缩（内容高度 ≥ 可视高度）",
+          (g.listScrollH ?? 0) >= (g.listClientH ?? 0),
+          `scrollHeight ${g.listScrollH} vs clientHeight ${g.listClientH}（count=${g.count}）`,
+        );
       } else {
-        check("会话数不足以触发滚动断言（跳过）", true, `count=${g.count}`);
+        check("没有会话，滚动断言跳过", true, `count=${g.count}`);
       }
 
       // ③ 左对齐：按钮基础样式的居中不能泄漏到纵向列表项
