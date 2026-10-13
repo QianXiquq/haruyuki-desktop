@@ -39,6 +39,11 @@ const MEASURE = `(() => {
     listScrollH: list?.scrollHeight, listClientH: list?.clientHeight,
     listScrollW: list?.scrollWidth, listClientW: list?.clientWidth,
     convAlign: cs('.conversation', 'alignItems'), convJustify: cs('.conversation', 'justifyContent'),
+    hasSidebarPanels: !!document.querySelector('.sidebar-panels'),
+    hasRecallPanel: !!document.querySelector('.recall-panel'),
+    hasSettingsTrigger: !!document.querySelector('.settings-trigger'),
+    listH: list ? +list.getBoundingClientRect().height.toFixed(1) : null,
+    sideH: (() => { const a = document.querySelector('.sidebar'); return a ? +a.getBoundingClientRect().height.toFixed(1) : null; })(),
     sidebarBg: cs('.sidebar', 'backgroundColor'), mainBg: cs('.main', 'backgroundColor'),
     win: [window.innerWidth, window.innerHeight],
   };
@@ -79,7 +84,21 @@ function afterLoad(win) {
       // ⑤ 层次靠亮度分层
       check("侧栏与主区底色不同", g.sidebarBg !== g.mainBg, `sidebar=${g.sidebarBg} main=${g.mainBg}`);
 
-      // ⑥ 对话正文限宽
+      // ⑥ 侧栏不再常驻低频面板（recall 已搬进设置弹窗）
+  check(
+    "侧栏不再有常驻的 recall 面板",
+    !g.hasSidebarPanels && !g.hasRecallPanel,
+    `sidebar-panels=${g.hasSidebarPanels} recall-panel=${g.hasRecallPanel}`,
+  );
+  check("顶栏有设置入口", g.hasSettingsTrigger, `settings-trigger=${g.hasSettingsTrigger}`);
+  // 低频面板搬走后，会话列表应该占掉侧栏绝大部分高度
+  check(
+    "会话列表占据侧栏大部分高度（低频面板不再挤占）",
+    (g.listH ?? 0) / (g.sideH ?? 1) > 0.6,
+    `列表 ${g.listH} / 侧栏 ${g.sideH} = ${(((g.listH ?? 0) / (g.sideH ?? 1)) * 100).toFixed(0)}%`,
+  );
+
+  // ⑦ 对话正文限宽
       check("对话正文有限宽（<=900px）", (g.assistant?.w ?? 0) <= 900 && (g.assistant?.w ?? 0) > 0,
         `assistant 宽 ${g.assistant?.w}px`);
 

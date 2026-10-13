@@ -422,3 +422,22 @@ button.interrupt:hover:not(:disabled) { background: #2a2418; }
   background: var(--panel); border: 1px solid var(--border-soft); border-radius: 8px;
   color: var(--muted); font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
 }
+
+/* 设置弹窗：把原先常驻侧栏的 recall 收进来 */
+.settings-modal {
+  width: min(960px, 92vw);
+  /* 按内容高度，别撑满 760px —— 否则下方留一大片空白（记忆浏览器需要固定高度，
+     设置不需要：它的内容高度就是它的高度） */
+  height: auto; max-height: min(760px, 88vh);
+}
+.settings-modal .settings-body { max-height: calc(min(760px, 88vh) - 56px); }
+.settings-sub { color: var(--muted-dim); font-size: 11px; }
+.settings-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+/* 覆盖为侧栏做的紧凑化样式 —— 弹窗里空间充足，用正常字号更好读 */
+.settings-body .sidebar-panels-compact { display: none; }
+.settings-body .recall-panel { border-top: none; padding-top: 0; }
+.settings-body .recall-line, .settings-body .usage-total { font-size: 12px; line-height: 1.6; }
+.settings-body .recall-line.small { font-size: 11px; }
+.settings-body .recall-head { font-size: 13px; }
+.settings-body .recall-build { font-size: 12px; padding: 6px 10px; }
+.settings-trigger { white-space: nowrap; }

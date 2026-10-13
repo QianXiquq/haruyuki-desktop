@@ -5,7 +5,7 @@ import { ConversationList } from "./components/ConversationList";
 import { MemoryBrowser } from "./components/MemoryBrowser";
 import { MessageList } from "./components/MessageList";
 import { ModelPicker } from "./components/ModelPicker";
-import { RecallPanel } from "./components/RecallPanel";
+import { SettingsModal } from "./components/SettingsModal";
 import { StatusBar } from "./components/StatusBar";
 import { WorkingDirectory } from "./components/WorkingDirectory";
 import type { PermissionMode } from "@/shared/ipc-contract";
@@ -103,6 +103,7 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState<PermissionMode>("standard");
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (status.state !== "connected") return;
@@ -194,22 +195,6 @@ export function App() {
             onQueryChange={(q) => void runSearch(q)}
           />
 
-          <div className="sidebar-panels">
-            <RecallPanel
-              recall={recall}
-              busy={recallBusy}
-              dirty={recallDirty}
-              restarting={restarting}
-              status={status}
-              usageTotals={usageTotals}
-              lastUsage={lastUsage}
-              onRefresh={() => void refreshRecall()}
-              onBuild={() => void buildRecallIndex()}
-              onApply={(setting) => void applyRecallSetting(setting)}
-              onRestart={() => void restartServer()}
-            onProbe={runRecallProbe}
-            />
-          </div>
         </aside>
 
         <main className="main">
@@ -270,6 +255,14 @@ export function App() {
                 title="重新拉取当前会话的历史消息"
               >
                 刷新
+              </button>
+              <button
+                type="button"
+                className="ghost settings-trigger"
+                title="设置：召回（recall）与用量"
+                onClick={() => setSettingsOpen(true)}
+              >
+                ⚙ 设置
               </button>
             </div>
           </header>
@@ -346,6 +339,24 @@ export function App() {
           />
         </main>
       </div>
+
+      {settingsOpen ? (
+        <SettingsModal
+          recall={recall}
+          busy={recallBusy}
+          dirty={recallDirty}
+          restarting={restarting}
+          status={status}
+          usageTotals={usageTotals}
+          lastUsage={lastUsage}
+          onRefresh={() => void refreshRecall()}
+          onBuild={() => void buildRecallIndex()}
+          onApply={(setting) => void applyRecallSetting(setting)}
+          onRestart={() => void restartServer()}
+          onProbe={runRecallProbe}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
 
       {memoryOpen ? (
         <MemoryBrowser
