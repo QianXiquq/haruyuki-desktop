@@ -15,7 +15,7 @@ import { join } from "node:path";
  *   5. **PATH 与常见安装目录里的 `haruyuki`**（全局安装的那一份）
  *   6. 自带 node_modules/.bin/haruyuki
  *
- * 关于第 4 条：开发期默认指向 **上游 TZYLT 的 0.2.0 参考仓**，
+ * 关于第 4 条：开发期默认指向 **上游 TZYLT 参考仓**的默认路径 `~/haruyuki-upstream`（`scripts/setup-server.sh` 会构建到那里），
  * 而不是任何 fork。`haruyuki.js` 是 gitignore 的构建产物，所以这个文件存不存在
  * 直接决定开发期能不能跑起来；不存在时会自然落到第 5 条。
  */

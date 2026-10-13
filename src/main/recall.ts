@@ -16,7 +16,7 @@ import type { RecallCommandResult, RecallSettingValue } from "@/shared/ipc-contr
  * ```
  *
  * 上游源码原话：**"任何其它 `/recall` 子命令在这里也能用，所以脚本可以设置旋钮"**。
- * 所以 GUI 走 CLI 就能与 TUI **完全对等**，且**零 fork、零协议改动**。
+ * 所以 GUI 走 CLI 就能与 TUI **完全对等**，且**零 fork、零协议改动** —— 本客户端只做协议与 CLI 的调用方，不改上游任何代码。
  *
  * ## 实测确认过的行为（别重复踩）
  *

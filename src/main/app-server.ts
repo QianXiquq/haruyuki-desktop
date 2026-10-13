@@ -69,8 +69,8 @@ function asRecord(value: unknown): Record<string, unknown> {
  *
  * 这样取舍的理由：那些片段是**几千字的原文**，我们的气泡是纯文本、没有折叠语义，
  * 原样塞进用户气泡会把历史读成一片噪音。代价是界面上看不到"这轮召回了什么"——
- * 想要的话，去 TUI 里 `/recall display summary` 看，或者等 GUI 做召回面板
- * 。
+ * 想要的话，去 TUI 里 `/recall display summary` 看；本客户端的设置弹窗里也有
+ * 召回面板（索引状态 / 试搜 / 十项设置）。
  */
 const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 
