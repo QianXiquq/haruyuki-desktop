@@ -54,17 +54,24 @@ npm install -g haruyuki
 The app needs to know how to launch the haruyuki runtime. It resolves the command
 in this order, first match wins:
 
-| Order | Variable | Meaning |
+| Order | Source | Meaning |
 |---|---|---|
 | 1 | `HARUYUKI_SERVER_CMD` | A full command line. Must include the `server` subcommand. |
 | 2 | `HARUYUKI_BIN` | Path to the executable, or to a `.js` entry point. |
 | 3 | `HARUYUKI_REPO` | A haruyuki source checkout; its build artifact `<dir>/haruyuki.js` is used. |
-| 4 | — | `<project>/node_modules/.bin/haruyuki` if present. |
+| 4 | `~/haruyuki-upstream` | A reference checkout, if that build artifact exists. |
+| 5 | `PATH` + common locations | A globally installed `haruyuki`. |
+| 6 | — | `<project>/node_modules/.bin/haruyuki` if present. |
 
-> ⚠️ **A global `npm install -g haruyuki` is not found automatically.** The
-> resolver does not search `PATH`, so if you installed haruyuki globally you must
-> set `HARUYUKI_REPO` (or `HARUYUKI_BIN`) explicitly. This is a known gap, not a
-> documentation oversight.
+A **global `npm install -g haruyuki` is found automatically.** Step 5 searches
+`PATH` *and* a set of well-known directories — `/opt/homebrew/bin`,
+`/usr/local/bin`, `~/.bun/bin`, `~/.local/bin`, `~/.npm-global/bin`,
+`~/.volta/bin` — because an app started from Finder or the Dock usually has a
+`PATH` of just `/usr/bin:/bin:/usr/sbin:/sbin` and would otherwise never see a
+Homebrew or npm-global install.
+
+If you have several haruyuki installs and want a specific one, set
+`HARUYUKI_REPO` or `HARUYUKI_BIN` — the earlier steps win.
 
 From a source checkout of haruyuki, build it once and point at the directory:
 
@@ -130,6 +137,7 @@ bun run check:memory        # MemFS read/write, frontmatter rules, cleanup
 bun run check:search        # title search and the recall probe
 bun run check:perf          # streaming load: event count must not track text length
 bun run check:delete        # conversation deletion, path escapes, history tokens
+bun run check:resolve       # how the haruyuki runtime is located (no server needed)
 bun run check:layout        # layout measurements (Electron; see the note below)
 ```
 
@@ -173,7 +181,6 @@ Two constraints shape the design:
 - **Not signed or notarized.** No prebuilt binaries are published yet; build from
   source. If you package it yourself, macOS Gatekeeper will block the unsigned
   app and you will need to allow it manually.
-- **No `PATH` lookup** for a globally installed haruyuki runtime (see above).
 - **Cost is not displayed.** The server does not send cost over the protocol.
   The on-disk records do carry it, but it is deliberately not shown — only tokens.
 - The TUI has features the protocol does not expose, and this client does not try

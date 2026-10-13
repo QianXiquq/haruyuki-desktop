@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -12,7 +12,8 @@ import { join } from "node:path";
  *   2. HARUYUKI_BIN       —— 可执行文件或 .js 路径
  *   3. HARUYUKI_REPO      —— 源码仓目录，取其构建产物 `<dir>/haruyuki.js`
  *   4. 上游参考仓的构建产物（开发期默认；仅当文件确实存在）
- *   5. 自带 node_modules/.bin/haruyuki
+ *   5. **PATH 与常见安装目录里的 `haruyuki`**（全局安装的那一份）
+ *   6. 自带 node_modules/.bin/haruyuki
  *
  * 关于第 4 条：开发期默认指向 **上游 TZYLT 的 0.2.0 参考仓**，
  * 而不是任何 fork。`haruyuki.js` 是 gitignore 的构建产物，所以这个文件存不存在
@@ -76,10 +77,61 @@ export function resolveHaruyukiLauncher(): ServerCommand {
     return { command: process.execPath, args: [devBuild] };
   }
 
+  // 全局安装（`npm install -g haruyuki`）的查找。
+  //
+  // ⚠️ **不能只靠 `process.env.PATH`**：从 Finder / Dock 启动的应用，
+  // PATH 往往只有 `/usr/bin:/bin:/usr/sbin:/sbin`，看不到 `/opt/homebrew/bin`
+  // 或 `/usr/local/bin`。所以这里**同时**搜 PATH 与一组常见安装目录。
+  const onPath = findHaruyukiOnPath();
+  if (onPath) return { command: onPath, args: [] };
+
   return {
     command: join(process.cwd(), "node_modules", ".bin", "haruyuki"),
     args: [],
   };
+}
+
+/**
+ * 在 PATH 与常见安装目录里找 `haruyuki` 可执行文件。
+ *
+ * 找的是**普通可执行文件**，不是 `.js` —— npm 全局安装会生成一个带 shebang 的
+ * shim，直接当命令跑即可。
+ *
+ * 顺序刻意把用户目录（`~/.bun/bin`、`~/.local/bin`）放在系统目录之后：
+ * 系统级安装更可能是用户有意配置的那一份。
+ */
+export function findHaruyukiOnPath(): string | null {
+  const candidates: string[] = [];
+
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    if (dir.trim()) candidates.push(join(dir.trim(), "haruyuki"));
+  }
+
+  const home = homedir();
+  const wellKnown = [
+    "/opt/homebrew/bin", // Apple Silicon Homebrew
+    "/usr/local/bin", // Intel Homebrew / npm 默认前缀
+    "/usr/bin",
+    join(home, ".bun", "bin"),
+    join(home, ".local", "bin"),
+    join(home, ".npm-global", "bin"),
+    // nvm / volta 这类版本管理器：只取"当前"软链，不遍历所有版本
+    join(home, ".volta", "bin"),
+  ];
+  for (const dir of wellKnown) candidates.push(join(dir, "haruyuki"));
+
+  for (const candidate of candidates) {
+    try {
+      // 必须同时是文件且有执行位 —— 只判 existsSync 会把一个同名**目录**当成命令
+      if (existsSync(candidate) && statSync(candidate).isFile()) {
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      }
+    } catch {
+      // 没权限 / 不存在：继续找下一个
+    }
+  }
+  return null;
 }
 
 export interface StartedServer {
