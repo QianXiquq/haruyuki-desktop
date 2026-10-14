@@ -45,7 +45,10 @@
     "check:search": "bun scripts/search-check.ts",
     "check:perf": "bun scripts/perf-check.ts",
     "check:delete": "bun scripts/delete-check.ts",
-    "check:resolve": "bun scripts/resolve-check.ts"
+    "check:resolve": "bun scripts/resolve-check.ts",
+    "dist": "electron-vite build && electron-builder --mac --arm64",
+    "dist:dir": "electron-vite build && electron-builder --mac --arm64 --dir",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -60,6 +63,7 @@
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.1.2",
     "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

@@ -1,0 +1,66 @@
+# electron-builder 配置：把 Electron 客户端打成 macOS 可分发的产物。
+#
+# 三个刻意的决定，都写在下面各自的注释里：
+#   1. 目标只做 **arm64**（开发机是 Apple Silicon，未验证 x64）
+#   2. **不签名/不公证** —— 未签名的产物 Gatekeeper 会拦，README 里给了放行办法
+#   3. **不捆绑 haruyuki 运行时** —— 用户自己装，见 README
+appId: com.qianxiquq.haruyuki-desktop
+productName: haruyuki-desktop
+copyright: Copyright 2026 QianXiquq
+
+directories:
+  output: release
+  buildResources: build
+
+# 产物是**自包含**的：electron-vite 把 ws 等运行时依赖都内联进了 out/main，
+# 所以这里只收 out/ 与 package.json，**不收 node_modules**（省体积，也避免把
+# 无关的开发依赖打进去）。已验证 out/main/index.mjs 里没有对 ws 的运行时 import。
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+  # 产物自包含：react 已被 vite 打进渲染包、ws 已被打进主进程包（都已实测确认），
+  # 所以不要把 node_modules 带进去 —— 否则白增约 8MB。
+  - "!node_modules/**/*"
+
+# 许可与归属必须随产物分发：
+#   - Apache-2.0 要求带上 LICENSE 与 NOTICE
+#   - 第三方声明（含 vendor 的上游归属）
+# Electron 自己的 LICENSES.chromium.html 由 electron-builder 从 Electron 发行版带入，
+# 打包后会单独校验它在不在（见 scripts/verify-package.sh）。
+extraResources:
+  - from: LICENSE
+    to: LICENSE
+  - from: NOTICE
+    to: NOTICE
+  - from: THIRD-PARTY-NOTICES.md
+    to: THIRD-PARTY-NOTICES.md
+  # ⚠️ Electron/Chromium 的许可全文。**分发 Electron 应用必须带上它**，
+  # 而 electron-builder **不会自动包含** —— 必须像这样显式加。
+  # 打包后由 scripts/verify-package.mjs 校验它真的在产物里。
+  - from: node_modules/electron/dist/LICENSES.chromium.html
+    to: LICENSES.chromium.html
+
+asar: true
+# 没有原生模块，跳过重建（更快，也少一类失败可能）
+npmRebuild: false
+
+mac:
+  category: public.app-category.developer-tools
+  minimumSystemVersion: "11.0"
+  target:
+    - target: dmg
+      arch: [arm64]
+    # zip 便于自动更新/归档；dmg 是给人双击的
+    - target: zip
+      arch: [arm64]
+  # ⚠️ 显式关闭签名。不加这条时 electron-builder 可能去找钥匙串里的证书，
+  # 找不到就报错，让"未签名也能出包"这件事变得不稳定。
+  identity: null
+
+dmg:
+  title: haruyuki-desktop ${version}
+
+# 不做自动发布：上传 Release 需要 token，且推送由维护者手动执行（本项目的既定纪律）。
+# 产物落在 release/，由维护者手动附到 GitHub Release。
+publish: null

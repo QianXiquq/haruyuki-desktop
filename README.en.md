@@ -14,6 +14,26 @@ same conversations with a graphical interface — windows, a sidebar, a mouse.
 
 ---
 
+## Download and install (macOS / Apple Silicon)
+
+Grab the latest `haruyuki-desktop-x.y.z-arm64.dmg` from
+[Releases](https://github.com/QianXiquq/haruyuki-desktop/releases), open it, and
+drag `haruyuki-desktop.app` into Applications.
+
+> ⚠️ **arm64 only** (Apple Silicon). Intel machines have **not** been tested.
+>
+> ⚠️ **The app is not signed or notarized**, so macOS blocks it the first time.
+> **To allow it, any one of:**
+> - In Applications, **right-click the icon -> Open -> Open** (once is enough)
+> - System Settings -> Privacy & Security, then click "Open Anyway" on the notice
+> - Terminal: `xattr -dr com.apple.quarantine /Applications/haruyuki-desktop.app`
+>
+> ⚠️ **The haruyuki runtime is not bundled** -- install it separately as below.
+> The app then finds it automatically, searching `PATH` and the usual install
+> locations.
+>
+> ⚠️ The build currently uses the **default Electron icon**.
+
 ## What it gives you
 
 The goal is parity with the TUI for day-to-day use, minus the parts the protocol

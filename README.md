@@ -13,6 +13,23 @@ haruyuki 本体是 TUI。这是一个独立的 Electron 客户端，说同一套
 
 ---
 
+## 下载安装（macOS / Apple Silicon）
+
+到 [Releases](https://github.com/QianXiquq/haruyuki-desktop/releases) 下载最新的
+`haruyuki-desktop-x.y.z-arm64.dmg`，打开后把 `haruyuki-desktop.app` 拖进「应用程序」。
+
+> ⚠️ **只提供 arm64**（Apple Silicon）。Intel 机器**没有验证过**。
+>
+> ⚠️ **应用未签名、未公证**，所以首次打开 macOS 会拦下它。**放行办法（任选其一）**：
+> - 在「应用程序」里 **右键点图标 → 打开 → 再点「打开」**（只需一次）
+> - `系统设置 → 隐私与安全性`，底部会出现被拦提示 → 点「仍要打开」
+> - 终端：`xattr -dr com.apple.quarantine /Applications/haruyuki-desktop.app`
+>
+> ⚠️ **haruyuki 运行时不随包分发** —— 仍要按下面的「环境要求」单独安装。
+> 装好后应用会自动找到它（会搜索 `PATH` 与常见安装目录）。
+>
+> ⚠️ 目前用的是 **Electron 默认图标**（还没做自己的图标）。
+
 ## 它能做什么
 
 目标是在日常使用上对齐 TUI，除了协议本身不暴露的那些部分。
