@@ -21,6 +21,7 @@ import {
   EMPTY_USAGE_TOTALS,
   accumulateUsage,
   parseRecallStatus,
+  resolvePersistedModelId,
 } from "@/shared/ipc-contract";
 
 declare global {
@@ -565,12 +566,20 @@ export function useHaruyuki() {
     [agentIdRef],
   );
 
-  /** 拉一次模型目录（失败只在面板上体现，不打断对话）。 */
-  const refreshModels = useCallback(async () => {
+  /**
+   * 拉一次模型目录（失败只在面板上体现，不打断对话）。
+   *
+   * 返回目录本身 —— 调用方（切换会话）要立刻拿它把**持久化的模型**映射回选项 id，
+   * 而 `models` 这个 state 在同一轮里还是旧值，等不到。
+   */
+  const refreshModels = useCallback(async (): Promise<ModelCatalog | null> => {
     try {
-      setModels(await window.haruyuki.listModels());
+      const catalog = await window.haruyuki.listModels();
+      setModels(catalog);
+      return catalog;
     } catch {
       setModels(null);
+      return null;
     }
   }, []);
 
@@ -728,8 +737,19 @@ export function useHaruyuki() {
 
         // 每个会话有自己的工作目录（服务端按会话存），所以切换会话必须重读。
         await refreshWorkingDirectory();
-        // 模型是本会话级的；目录拉一次即可（失败不阻断）。
-        await refreshModels();
+        // 模型是**本会话级**的，而且服务器早已把它持久化在
+        // `conversation.json`（model + model_settings.reasoning_effort）。
+        // 这里把它读回来并映射成目录里的选项 id —— 于是重开应用后选择器显示的是
+        // 用户当初选的那个模型，而不是"模型（未知）"。
+        // 先清空，避免异步读回来之前还显示上一个会话的模型。
+        setCurrentModelId(null);
+        const catalog = await refreshModels();
+        try {
+          const persisted = await window.haruyuki.conversationModel(scope.conversation_id);
+          setCurrentModelId(resolvePersistedModelId(catalog, persisted));
+        } catch {
+          // 读不到就保持"未知" —— 如实呈现，不猜
+        }
 
         // 会话的 last_message_at 会变，列表要在进入后重新排一次。
         try {

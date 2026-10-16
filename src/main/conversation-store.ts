@@ -25,6 +25,7 @@
 import { existsSync, readdirSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { PersistedConversationModel } from "@/shared/ipc-contract";
 
 /** 本地后端的存储根。可用 `HARUYUKI_STORAGE_DIR` 覆盖（自测用）。 */
 export function conversationStoreRoot(): string {
@@ -209,7 +210,58 @@ export function readConversationTokens(conversationId: string): ConversationToke
   };
 }
 
-/** 读某个会话的标题（`summary`），用于界面确认弹窗显示"你正在删哪个"。 */
+/**
+ * 读某个会话**持久化的模型**（从磁盘）。
+ *
+ * ## 为什么读磁盘而不是走协议
+ *
+ * 服务器其实**已经把每会话的模型存下来了** —— `conversation.json` 里有：
+ *
+ * ```json
+ * "model": "deepseek/deepseek-flash",
+ * "model_settings": { "reasoning_effort": "high", ... }
+ * ```
+ *
+ * 但协议侧**没有"读当前模型"的命令**（`conversation_retrieve` 早先实测对新会话
+ * 返回不出模型字段），所以要在界面显示"这个会话用的是什么模型"，只能读文件。
+ *
+ * ⚠️ **模型 + 推理档位是两件事**：目录里的 `id`（如 `deepseek-flash-high`）才同时
+ * 编码了二者，而磁盘上它们是分开的两个字段。所以这里两个都要取出来，
+ * 由 `resolvePersistedModelId()` 去映射回目录 id。
+ */
+/** 读某个会话持久化的模型。文件不存在或字段缺失时返回 null 字段（不是错误）。 */
+export function readConversationModel(conversationId: string): PersistedConversationModel {
+  const empty: PersistedConversationModel = { model: null, reasoningEffort: null };
+  const file = join(conversationStoreRoot(), conversationDirName(conversationId), "conversation.json");
+  if (!existsSync(file)) return empty;
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+  } catch {
+    return empty;
+  }
+
+  const model = typeof parsed.model === "string" && parsed.model.trim() ? parsed.model.trim() : null;
+
+  // ⚠️ 档位在两个地方出现过：扁平的 `reasoning_effort`，以及嵌套的
+  // `reasoning.reasoning_effort`（实测磁盘上两者都有）。优先取扁平的，回退到嵌套的。
+  let effort: string | null = null;
+  const settings = parsed.model_settings;
+  if (settings && typeof settings === "object") {
+    const rec = settings as Record<string, unknown>;
+    if (typeof rec.reasoning_effort === "string" && rec.reasoning_effort) {
+      effort = rec.reasoning_effort;
+    } else if (rec.reasoning && typeof rec.reasoning === "object") {
+      const nested = (rec.reasoning as Record<string, unknown>).reasoning_effort;
+      if (typeof nested === "string" && nested) effort = nested;
+    }
+  }
+
+  return { model, reasoningEffort: effort };
+}
+
+/** 读某个会话的标题（`summary`），用于界面确认弹窗显示/** 读某个会话的标题（`summary`），用于界面确认弹窗显示"你正在删哪个"。 */
 export function readConversationSummary(conversationId: string): string | null {
   try {
     const file = join(conversationStoreRoot(), conversationDirName(conversationId), "conversation.json");

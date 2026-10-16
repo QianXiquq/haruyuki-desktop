@@ -473,12 +473,66 @@ export interface ModelOption {
   effort?: string;
 }
 
+/**
+ * 一个会话**持久化在磁盘上**的模型设置。
+ *
+ * ⚠️ 模型 handle 与推理档位在磁盘上是**两个独立字段**
+ * （`model` 与 `model_settings.reasoning_effort`），而模型目录里的 `id`
+ * 才把二者编码在一起（例如 `deepseek-flash-high`）。
+ *
+ * 服务器本身已经持久化了它们，但协议没有"读当前模型"的命令 —— 所以只能读磁盘。
+ */
+export interface PersistedConversationModel {
+  /** 模型 handle，例如 `deepseek/deepseek-flash`。取不到时为 null。 */
+  model: string | null;
+  /** 推理档位，例如 `high`。取不到时为 null。 */
+  reasoningEffort: string | null;
+}
+
 /** `list_models` + `update_model` 的结果。 */
 export interface ModelCatalog {
   options: ModelOption[];
   /** 服务端报的可用 handle（`available_handles`）。 */
   availableHandles: string[];
 }
+
+/**
+ * 把"磁盘上持久化的模型"映射回模型目录里的 `id`（纯函数，便于单独校验）。
+ *
+ * 为什么需要映射：磁盘存的是 `model: "deepseek/deepseek-flash"` +
+ * `reasoning_effort: "high"`，而目录里的选项 id 是 `deepseek-flash-high`。
+ * 二者必须对上，界面才能在重开应用后**显示回**用户当初选的那个模型，
+ * 而不是退化成"模型（未知）"。
+ *
+ * 匹配顺序：
+ *   1. handle 相同、且推理档位**完全一致** → 最精确
+ *   2. 档位取不到时，优先同 handle 下 `none`（= 不指定 effort）的那条
+ *   3. 同 handle 的任意一条
+ *   4. 少数目录直接拿 handle 当 id（不支持推理档位的模型）→ 按 id 再找一次
+ *
+ * 都对不上就返回 null —— 界面会如实显示"未知"，**不猜**。
+ */
+export function resolvePersistedModelId(
+  catalog: ModelCatalog | null,
+  persisted: PersistedConversationModel,
+): string | null {
+  if (!catalog || !persisted.model) return null;
+
+  const sameHandle = catalog.options.filter((option) => option.handle === persisted.model);
+
+  if (persisted.reasoningEffort) {
+    const exact = sameHandle.find((option) => option.effort === persisted.reasoningEffort);
+    if (exact) return exact.id;
+  }
+
+  const none = sameHandle.find((option) => option.effort === "none");
+  if (none) return none.id;
+  if (sameHandle.length > 0) return sameHandle[0]!.id;
+
+  const byId = catalog.options.find((option) => option.id === persisted.model);
+  return byId?.id ?? null;
+}
+
 
 /**
  * agent 的记忆文件（来自 `list_memory`）。
@@ -633,6 +687,15 @@ export interface HaruyukiApi {
    * 后者是当时的**上下文规模**（快照），累加会虚高数倍（实测 20041 → 75465）。
    */
   conversationTokens(conversationId: string): Promise<ConversationTokenTotals>;
+  /**
+   * 读一个会话**持久化的模型**（直接读本地存储）。
+   *
+   * 服务器已经把它存下来了（`conversation.json` 的 `model` 与
+   * `model_settings.reasoning_effort`），但协议没有读回它的命令，
+   * 所以只能读磁盘 —— 用途是重开应用后把模型选择器**恢复成用户当初选的**，
+   * 而不是显示"模型（未知）"。
+   */
+  conversationModel(conversationId: string): Promise<PersistedConversationModel>;
   /** 读会话的自定义标题，用于删除确认弹窗里显示"你正在删哪个"。 */
   conversationTitle(conversationId: string): Promise<string | null>;
   /**
