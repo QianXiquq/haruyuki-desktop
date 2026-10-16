@@ -281,7 +281,12 @@ export function App() {
           </header>
 
           <div className="thread" ref={threadScroll.ref as React.RefObject<HTMLDivElement>}>
-            <MessageList items={items} loading={loadingHistory} usageByItem={usageByItem} />
+            <MessageList
+              items={items}
+              loading={loadingHistory}
+              usageByItem={usageByItem}
+              busy={busy}
+            />
           </div>
 
           <div className="approval-area">

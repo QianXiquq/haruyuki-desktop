@@ -122,14 +122,49 @@ button.ghost:hover:not(:disabled) { color: var(--fg); background: var(--panel); 
   display: block; margin-bottom: 4px; color: var(--muted-dim);
   font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
 }
-.msg.reasoning { background: transparent; color: var(--muted-dim); font-size: 13px; padding: 0; }
-.msg.reasoning summary { cursor: pointer; user-select: none; }
-.msg.reasoning summary:hover { color: var(--muted); }
-.msg.tool {
-  background: var(--panel); border: 1px solid var(--border-soft);
-  border-radius: var(--radius); padding: 10px 12px; font-size: 13px;
+/*
+ * 一轮对话：user 消息 + 思考折叠 + 最终输出。
+ * 用一层 .turn 包起来，是为了让"轮内间距"小于"轮间距" —— 否则用户消息、
+ * 思考折叠、正文看起来是三个互不相干的块。
+ */
+.turn { display: flex; flex-direction: column; gap: 10px; }
+
+/*
+ * 思考折叠：一轮里**所有**推理与工具调用都收在这一个折叠里，默认收起。
+ * 它们是过程，不是给用户看的结果 —— 想看时点开。
+ */
+.msg.thinking {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 12px;
 }
-.tool-name { color: var(--muted); font-weight: 500; margin-bottom: 6px; font-size: 12px; }
+.msg.thinking > summary {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  color: var(--muted-dim); font-size: 12px; list-style: none;
+}
+/* 去掉 Safari/Chromium 默认的三角，用自己的（好和深色主题统一） */
+.msg.thinking > summary::-webkit-details-marker { display: none; }
+.msg.thinking > summary::before { content: "▸"; font-size: 10px; color: var(--muted-dim); }
+.msg.thinking[open] > summary::before { content: "▾"; }
+.msg.thinking > summary:hover { color: var(--muted); background: var(--panel); }
+.msg.thinking[open] > summary { border-bottom: 1px solid var(--border-soft); }
+
+.thinking-body {
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 12px;
+  background: var(--sidebar);
+}
+.thinking-step { display: flex; flex-direction: column; gap: 4px; }
+.thinking-label { color: var(--muted-dim); font-size: 11px; }
+/* 选择器要压过 `.msg pre`（那是给正文里的 pre 定的字号与边距） */
+.msg.thinking .thinking-text {
+  margin: 0; white-space: pre-wrap; word-break: break-word;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 12px; line-height: 1.6; color: var(--muted);
+}
+.msg.thinking .tool-output { color: var(--fg); }
 .msg pre {
   margin: 6px 0 0; white-space: pre-wrap; word-break: break-word;
   font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", monospace;
