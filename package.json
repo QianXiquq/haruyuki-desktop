@@ -1,6 +1,6 @@
 {
   "name": "haruyuki-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unofficial desktop GUI for haruyuki — a local-first runtime for stateful agents (speaks the app-server v2 WebSocket protocol).",
   "license": "Apache-2.0",
   "author": "QianXiquq",
